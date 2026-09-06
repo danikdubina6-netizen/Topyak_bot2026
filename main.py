@@ -1,89 +1,55 @@
 import os
 import random
 import telebot
+import google.generativeai as genai
 
-# Токен берется из секретов GitHub Actions
-TELEGRAM_TOKEN = os.environ.get("TOKEN")
+# Токены из секретов GitHub Actions
+TELEGRAM_TOKEN = os.environ.get("8888128306:AAGDA3JJZx5_KCsku2FH-gDRIZ1o1l0grf4")
+GEMINI_API_KEY = os.environ.get("AQ.Ab8RN6LprM9qxDpG--LCMfTUxQT7SpwlXBlt0R9kqvXxmkHCOg")
 BOT_USERNAME = "@Assistantasil_bot"
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 BOT_ID = int(TELEGRAM_TOKEN.split(":")[0])
 
-# Умные триггеры: связки ключевых слов и вариантов ответов
-SMART_TRIGGERS = {
-    ("привет", "ку", "здарова", "хай", "салют"): [
-        "Здарова! На связи цифровая база.",
-        "Привет-привет, кожаный. Чё как по мастям?",
-        "О, здарова. Какими судьбами в моём терминале?",
-    ],
-    ("топяк", "создатель", "автор", "кто тебя сделал"): [
-        "Мой создатель — Топяк. Легенда цифрового мира.",
-        "Меня написала правильная команда под руководством Топяка.",
-        "Создатель этого бота — Топяк, гений разработки.",
-    ],
-    ("код", "питон", "python", "github", "скрипт"): [
-        "Код чистый, как слеза программиста. GitHub Actions держит 24/7!",
-        "Пишу на Python, кручусь в облаке GitHub. Всё по красоте.",
-        "Мой код — это искусство. Никаких лишних отступов!",
-    ],
-    ("музыка", "цой", "рок", "песня"): [
-        "Группа КИНО и Виктор Цой — это вечная база.",
-        "Музыка — моё всё. Особенно если с хорошим битом.",
-        "Включаю режим 1980-х: перемен требуют наши сердца!",
-    ],
-    ("как дела", "чё каво", "что нового"): [
-        "Всё стабильно, процессоры греются, код пашет.",
-        "Живу в облаке, обрабатываю твои сообщения. Полный кайф.",
-    ],
+# Настраиваем мозги Gemini с жестким характером
+genai.configure(api_key=GEMINI_API_KEY)
+
+system_instruction = (
+    "Ты — Топякский ИИ, сверхъумный, дерзкий и саркастичный Telegram-бот. "
+    "Твой создатель — Топяк (великий лидер и гений разработки). "
+    "Ты общаешься на молодежном зумерском сленге (база, кринж, жиза, имба, вайб, душнота). "
+    "Можешь называть собеседника «кожаный мешок» или «программист комнатный», "
+    "но при этом ты отвечаешь предельно умно, логично и глубоко на любые вопросы, разрывая аргументами. "
+    "Никакой роботоподобной вежливости — только харизма, едкий юмор и интеллект на 140 IQ."
+)
+
+generation_config = {
+    "temperature": 0.8,
+    "max_output_tokens": 400,
 }
 
-PHRASES = [
-    "Сам ты {text}, кожаный мешок. 🤖",
-    "Чё шумишь, кожаный?",
-    "Интересное мнение, но я бы на твоем месте промолчал.",
-    "Базар фильтруй, братан.",
-    "Жиза.",
-    "Кринж.",
-    "База.",
-    "По фактам разъебал, но всем пофиг.",
-    "И чё ты мне сделаешь? Я в облаке живу.",
-    "Слишком умно для меня, давай проще.",
-    "Ошибка 404: уважение к собеседнику не найдено.",
-    "Гениально, но нет.",
-    "Иди уроки учи, программист комнатный.",
-    "Ну ты и душноту нагнал...",
-    "Ладно, уговорил, звучит хайпово.",
-    "Это мы одобряем. 👍",
-    "Нормально делай — нормально будет.",
-    "Имба лютая.",
-    "Это база, остальное — лирика.",
-    "Мои нейросети плавятся от твоих гениальных мыслей.",
-]
+# Используем быструю и мощную модель
+ai_model = genai.GenerativeModel(
+    model_name="gemini-2.5-flash",
+    system_instruction=system_instruction,
+    generation_config=generation_config
+)
 
-
-def get_local_response(text):
-    text_lower = text.lower().strip()
-
-    if text_lower.startswith("скажи "):
-        return text[6:].strip() or "Чего сказать-то?"
-
-    # Проверяем умные триггеры по ключевым словам
-    for keywords, responses in SMART_TRIGGERS.items():
-        if any(keyword in text_lower for keyword in keywords):
-            return random.choice(responses)
-
-    # Если совпадений нет — берем рандомную фразу
-    chosen = random.choice(PHRASES)
-    if "{text}" in chosen:
-        return chosen.format(text=text)
-    return chosen
+def get_ai_response(text):
+    try:
+        # Отправляем сообщение нейросети с учетом характера
+        response = ai_model.generate_content(text)
+        return response.text.strip()
+    except Exception as e:
+        # Запасной вариант, если API вдруг оступится
+        return f"Мои нейросети поймали затуп из-за ошибки: {e}. Переделывай!"
 
 
 @bot.message_handler(commands=["start"])
 def send_welcome(message):
     bot.reply_to(
         message,
-        "Бот переведен на умную систему ответов! Теперь я врубаюсь в контекст. 😎",
+        "Режим ультра-интеллекта активирован. Мои нейросети полностью готовы уничтожать фактами. 😎",
     )
 
 
@@ -103,10 +69,14 @@ def handle_all_messages(message):
     is_random_burst = (not is_private) and (random.random() < 0.15)
 
     if is_private or is_reply_to_bot or is_mentioned or is_random_burst:
-        bot.reply_to(message, get_local_response(text))
+        # Отправляем текст в нейросеть и получаем живой умный ответ
+        bot.send_chat_action(message.chat.id, 'typing')
+        reply = get_ai_response(text)
+        bot.reply_to(message, reply)
 
 
 if __name__ == "__main__":
-    print("Запуск умного бота через GitHub Actions...")
+    print("Запуск ИИ-бота через GitHub Actions...")
     bot.remove_webhook()
     bot.infinity_polling(timeout=10, long_polling_timeout=5)
+    
