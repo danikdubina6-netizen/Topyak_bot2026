@@ -6,18 +6,18 @@ from telebot import types
 TOKEN = os.getenv('TOKEN')
 bot = telebot.TeleBot(TOKEN)
 
-# Получаем ID самого бота при старте, чтобы исключить его из самоответов
+# Получаем ID самого бота при старте
 BOT_ID = None
 try:
     BOT_ID = bot.get_me().id
 except Exception:
     pass
 
-# Хранилища состояний, памяти и счетчиков для групп
+# Хранилища состояний, памяти и счетчиков
 user_modes = {}       # Режимы работы (own, echo, mix) для чатов
 user_history = {}     # Память: история фраз
 group_toggles = {}    # Разрешено ли боту болтать в группе (True/False)
-message_counters = {} # Счетчик сообщений для лимита в 15 штук в группах
+message_counters = {} # Счетчик обычных сообщений для лимита в 15 штук
 
 # База фраз бота
 GREETINGS = [
@@ -63,7 +63,6 @@ def get_settings_keyboard(chat_id):
         types.InlineKeyboardButton("🔀 И то и то (Микс вариантов)", callback_data="mode_mix")
     )
     
-    # Кнопка включения/выключения бота в группе
     is_active = group_toggles.get(chat_id, True)
     toggle_text = "🔕 Выключить бота в этой группе" if is_active else "🔔 Включить бота в этой группе"
     markup.add(types.InlineKeyboardButton(toggle_text, callback_data="toggle_group"))
@@ -124,7 +123,7 @@ def handle_callbacks(call):
             reply_markup=get_settings_keyboard(chat_id)
         )
 
-# Обработчик всех текстовых сообщений (люди + другие боты)
+# Обработчик всех текстовых сообщений
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_all_messages(message):
     global BOT_ID
@@ -134,7 +133,7 @@ def handle_all_messages(message):
         except Exception:
             pass
 
-    # СТОП-КРАН: Если сообщение отправил сам этот бот — игнорируем, чтобы не было зацикливания
+    # Стоп-кран: не отвечаем сами на себя
     if BOT_ID and message.from_user.id == BOT_ID:
         return
 
@@ -143,46 +142,59 @@ def handle_all_messages(message):
     if not text:
         return
 
-    # 1. Проверяем, разрешено ли боту вообще говорить в этом чате
+    # Проверка активности бота в чате
     if chat_id not in group_toggles:
         group_toggles[chat_id] = True
-        
     if not group_toggles[chat_id]:
         return
 
-    # 2. Проверяем легендарную команду "Скажи <текст>"
+    # Команда "Скажи <текст>" работает всегда
     if text.lower().startswith('скажи '):
         phrase_to_say = text[6:].strip()
         if phrase_to_say:
             bot.reply_to(message, phrase_to_say)
         return
 
-    # Определяем, групповой ли это чат
     is_group = message.chat.type in ['group', 'supergroup']
+    
+    # Проверяем, обратились ли к боту напрямую (ответили на его сообщение или тегнули)
+    is_replied_to_bot = (
+        message.reply_to_message 
+        and message.reply_to_message.from_user 
+        and BOT_ID 
+        and message.reply_to_message.from_user.id == BOT_ID
+    )
+    
+    is_mentioned = BOT_ID and f"@{bot.get_me().username}" in text
 
-    if is_group:
-        # В группах бот считает сообщения и отвечает только каждое 15-е сообщение
+    is_addressed_to_bot = is_replied_to_bot or is_mentioned
+
+    if is_group and not is_addressed_to_bot:
+        # Если это группа, и к боту НЕ обратились напрямую — считаем до 15 сообщений
         if chat_id not in message_counters:
             message_counters[chat_id] = 0
             
         message_counters[chat_id] += 1
         
+        # Сохраняем в историю и молчим, пока не накопится 15 штук
+        update_history(chat_id, text)
+        
         if message_counters[chat_id] < 15:
-            update_history(chat_id, text)
             return
         else:
+            # Накопилось 15 сообщений — сбрасываем счетчик и отвечаем
             message_counters[chat_id] = 0
 
-    # 3. Сохраняем фразу в историю чата (учитывает и людей, и других ботов)
+    # Если к боту обратились напрямую — сбрасывать счетчик необязательно, но отвечаем сразу!
     update_history(chat_id, text)
 
-    # 4. Режим по умолчанию
+    # Инициализация режима
     if chat_id not in user_modes:
         user_modes[chat_id] = 'own'
 
     mode = user_modes[chat_id]
     
-    # 5. Логика ответов
+    # Генерация ответа в зависимости от режима
     if mode == 'echo':
         if user_history[chat_id] and len(user_history[chat_id]) > 1:
             past_phrases = [p for p in user_history[chat_id] if p != text]
@@ -222,4 +234,4 @@ def update_history(chat_id, text):
 if __name__ == '__main__':
     print("Бот запущен и готов к работе...")
     bot.infinity_polling(timeout=60, long_polling_timeout=60)
-    
+            
