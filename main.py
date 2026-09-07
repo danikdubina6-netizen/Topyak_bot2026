@@ -8,9 +8,9 @@ bot = telebot.TeleBot(TOKEN)
 
 # Хранилища состояний и памяти
 user_modes = {}      # Режимы работы для чатов
-user_history = {}    # Память: история фраз пользователя
+user_history = {}    # Память: история фраз, сказанных в чате
 
-# База фраз бота
+# Стандартная база ответов (используется ТОЛЬКО для режима "Свои фразы")
 GREETINGS = [
     "О, живой человек в терминале. Говори, чё хотел.",
     "О, здарова. Какими судьбами в моём терминале?",
@@ -43,15 +43,15 @@ VIBE_QUOTES = [
     "Космос молчит, а наш бот отвечает. Идеальный баланс."
 ]
 
-ALL_PHRASES = GREETINGS + SMART_RESPONSES + TOXIC_ROASTS + TECH_QUOTES + VIBE_QUOTES
+ALL_BASE_PHRASES = GREETINGS + SMART_RESPONSES + TOXIC_ROASTS + TECH_QUOTES + VIBE_QUOTES
 
 # Клавиатура с выбором режимов
 def get_settings_keyboard():
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(
-        types.InlineKeyboardButton("🗣 Говорить свои фразы", callback_data="mode_own"),
-        types.InlineKeyboardButton("🔄 Повторять чужие фразы (Эхо)", callback_data="mode_echo"),
-        types.InlineKeyboardButton("🔀 И то и то (Микс + Память)", callback_data="mode_mix")
+        types.InlineKeyboardButton("🗣 Говорить свои фразы (база бота)", callback_data="mode_own"),
+        types.InlineKeyboardButton("🔄 Повторять чужие фразы (из истории)", callback_data="mode_echo"),
+        types.InlineKeyboardButton("🔀 И то и то (Микс вариантов)", callback_data="mode_mix")
     )
     return markup
 
@@ -62,8 +62,8 @@ def send_welcome(message):
     
     mode_names = {
         'own': '🗣 Говорить свои фразы',
-        'echo': '🔄 Повторять чужие фразы (Эхо)',
-        'mix': '🔀 И то и то (Микс + Память)'
+        'echo': '🔄 Повторять чужие фразы (из истории)',
+        'mix': '🔀 И то и то (Микс)'
     }
     
     welcome_text = (
@@ -82,15 +82,15 @@ def handle_mode_callback(call):
     
     mode_titles = {
         'own': '🗣 Говорить свои фразы',
-        'echo': '🔄 Повторять чужие фразы (Эхо)',
-        'mix': '🔀 И то и то (Микс + Память)'
+        'echo': '🔄 Повторять чужие фразы (из истории)',
+        'mix': '🔀 И то и то (Микс)'
     }
     
     bot.answer_callback_query(call.id, "Режим успешно изменен!")
     bot.edit_message_text(
         chat_id=chat_id,
         message_id=call.message.message_id,
-        text=f"✅ **Режим зафиксирован:**\n*{mode_titles.get(new_mode)}*\n\nМожешь писать сообщения в чат!",
+        text=f"✅ **Режим обновлен:**\n*{mode_titles.get(new_mode)}*\n\nМожешь продолжать общение!",
         reply_markup=get_settings_keyboard(),
         parse_mode='Markdown'
     )
@@ -105,7 +105,7 @@ def handle_all_messages(message):
     if chat_id not in user_modes:
         user_modes[chat_id] = 'own'
 
-    # Сохраняем фразу в память чата (историю)
+    # Сохраняем фразу в историю чата
     if chat_id not in user_history:
         user_history[chat_id] = []
     
@@ -116,49 +116,42 @@ def handle_all_messages(message):
 
     mode = user_modes[chat_id]
     
-    # ЖЕСТКАЯ ПРОВЕРКА РЕЖИМОВ НА САМОМ ВЕРХУ
-    
+    # ЛОГИКА РЕЖИМОВ
     if mode == 'echo':
-        # 1. СТРОГОЕ ЭХО: возвращаем ТОЛЬКО текст пользователя и сразу выходим (return)
-        bot.reply_to(message, text)
-        return
-
-    elif mode == 'mix':
-        # 2. МИКС: выбираем из базы, текущего текста или истории
-        choice_pool = ['current', 'base']
-        if user_history[chat_id]:
-            choice_pool.append('history')
-            
-        selected_source = random.choice(choice_pool)
-        if selected_source == 'current':
-            response = text
-        elif selected_source == 'history':
-            response = random.choice(user_history[chat_id])
-        else:
-            response = random.choice(ALL_PHRASES)
-            
-        bot.reply_to(message, response)
-        return
-
-    else:
-        # 3. ТОЛЬКО СВОИ ФРАЗЫ (дефолт)
-        text_lower = text.lower()
-        if user_history[chat_id] and len(user_history[chat_id]) > 3 and random.random() < 0.2:
-            response = random.choice(user_history[chat_id])
-        else:
-            if any(word in text_lower for word in ['привет', 'здарова', 'ку', 'здаров', 'хай', 'дороу']):
-                response = random.choice(GREETINGS)
-            elif any(word in text_lower for word in ['код', 'питон', 'скрипт', 'ошибка', 'баг', 'сервер', 'гитхаб']):
-                response = random.choice(TECH_QUOTES)
-            elif any(word in text_lower for word in ['музыка', 'трек', 'вайб', 'космос', 'жизнь', 'капкут']):
-                response = random.choice(VIBE_QUOTES)
-            elif any(word in text_lower for word in ['дурак', 'тупой', 'кринж', 'бот', 'сука', 'блять']):
-                response = random.choice(TOXIC_ROASTS)
+        # РЕЖИМ «ПОВТОРЯТЬ ЧУЖИЕ ФРАЗЫ»: берет случайную фразу из истории чата. 
+        # Если истории еще нет или мало, повторяет текущую.
+        if user_history[chat_id] and len(user_history[chat_id]) > 1:
+            # Исключаем текущее сообщение, чтобы выбирало именно из ПРОШЛЫХ фраз
+            past_phrases = [p for p in user_history[chat_id] if p != text]
+            if past_phrases:
+                response = random.choice(past_phrases)
             else:
-                response = random.choice(ALL_PHRASES)
-                
-        bot.reply_to(message, response)
-        return
+                response = text
+        else:
+            response = text
+            
+    elif mode == 'mix':
+        # МИКС: может выдать либо фразу из базы бота, либо из истории чата
+        pool = ALL_BASE_PHRASES.copy()
+        if user_history[chat_id]:
+            pool.extend(user_history[chat_id])
+        response = random.choice(pool)
+        
+    else:
+        # РЕЖИМ «СВОИ ФРАЗЫ»: строго из базы ответов бота с привязкой по ключевым словам
+        text_lower = text.lower()
+        if any(word in text_lower for word in ['привет', 'здарова', 'ку', 'здаров', 'хай', 'дороу']):
+            response = random.choice(GREETINGS)
+        elif any(word in text_lower for word in ['код', 'питон', 'скрипт', 'ошибка', 'баг', 'сервер', 'гитхаб']):
+            response = random.choice(TECH_QUOTES)
+        elif any(word in text_lower for word in ['музыка', 'трек', 'вайб', 'космос', 'жизнь', 'капкут']):
+            response = random.choice(VIBE_QUOTES)
+        elif any(word in text_lower for word in ['дурак', 'тупой', 'кринж', 'бот', 'сука', 'блять']):
+            response = random.choice(TOXIC_ROASTS)
+        else:
+            response = random.choice(ALL_BASE_PHRASES)
+
+    bot.reply_to(message, response)
 
 if __name__ == '__main__':
     print("Бот запущен и готов к работе...")
