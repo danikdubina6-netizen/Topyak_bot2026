@@ -6,11 +6,10 @@ from telebot import types
 TOKEN = os.getenv('TOKEN')
 bot = telebot.TeleBot(TOKEN)
 
-# Хранилище состояний пользователей (в памяти бота)
-# Ключ: chat_id, Значение: режим ('own', 'echo', 'mix')
+# Хранилище состояний пользователей
 user_modes = {}
 
-# (Вся огромная база фраз остается здесь же)
+# База фраз
 GREETINGS = [
     "О, живой человек в терминале. Говори, чё хотел.",
     "Здорово, программист. Какую фичу сегодня ломаем?",
@@ -41,34 +40,28 @@ VIBE_QUOTES = [
 
 ALL_PHRASES = GREETINGS + SMART_RESPONSES + TOXIC_ROASTS + TECH_QUOTES + VIBE_QUOTES
 
-# Главное меню с кнопками выбора режима
+# Функция для генерации клавиатуры с понятным описанием режимов
 def get_settings_keyboard():
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(
-        types.InlineKeyboardButton("🗣 Только свои фразы", callback_data="mode_own"),
-        types.InlineKeyboardButton("🔄 Повторять за мной", callback_data="mode_echo"),
-        types.InlineKeyboardButton("🔀 Микс (свои + повтор)", callback_data="mode_mix")
+        types.InlineKeyboardButton("🗣 Говорить свои фразы (база ответов бота)", callback_data="mode_own"),
+        types.InlineKeyboardButton("🔄 Повторять чужие фразы (режим эхо)", callback_data="mode_echo"),
+        types.InlineKeyboardButton("🔀 И то и то (Микс вариантов)", callback_data="mode_mix")
     )
     return markup
 
 @bot.message_handler(commands=['start', 'help', 'mode'])
 def send_welcome(message):
     chat_id = message.chat.id
-    # Устанавливаем режим по умолчанию, если его еще не было
-    if chat_id not in user_modes:
-        user_modes[chat_id] = 'own'
-        
-    current_mode = user_modes[chat_id]
-    mode_names = {
-        'own': '🗣 Только свои фразы',
-        'echo': '🔄 Повторять за мной',
-        'mix': '🔀 Микс (свои + повтор)'
-    }
+    current_mode = user_modes.get(chat_id, 'еще не выбран')
     
     welcome_text = (
-        f"🤖 **Топякский ИИ** на связи.\n"
-        f"Текущий режим: *{mode_names.get(current_mode)}*\n\n"
-        f"Выбирай режим работы ниже:"
+        "🤖 **Топякский ИИ** на связи.\n\n"
+        "Выбери, как я должен отвечать в чате. Вот что делают кнопки:\n"
+        "• **Говорить свои фразы** — отвечаю своим фирменным сарказмом и базой.\n"
+        "• **Повторять чужие фразы** — работаю зеркалом, повторяя твои слова.\n"
+        "• **И то и то (Микс)** — рандомно чередую свои фразы и повтор.\n\n"
+        "Жми нужную кнопку ниже:"
     )
     bot.send_message(chat_id, welcome_text, reply_markup=get_settings_keyboard(), parse_mode='Markdown')
 
@@ -80,36 +73,43 @@ def handle_mode_callback(call):
     user_modes[chat_id] = new_mode
     
     mode_titles = {
-        'own': '🗣 Только свои фразы',
-        'echo': '🔄 Повторять за мной',
-        'mix': '🔀 Микс (свои + повтор)'
+        'own': '🗣 Говорить свои фразы',
+        'echo': '🔄 Повторять чужие фразы',
+        'mix': '🔀 И то и то (Микс)'
     }
     
-    bot.answer_callback_query(call.id, f"Режим изменен!")
+    bot.answer_callback_query(call.id, "Режим успешно изменен!")
     bot.edit_message_text(
         chat_id=chat_id,
         message_id=call.message.message_id,
-        text=f"🤖 Режим успешно переключен!\nТекущий режим: *{mode_titles.get(new_mode)}*",
+        text=f"✅ **Режим обновлен:**\n*{mode_titles.get(new_mode)}*\n\nМожешь продолжать общение!",
         reply_markup=get_settings_keyboard(),
         parse_mode='Markdown'
     )
 
-# Обработчик всех текстовых сообщений с учетом выбранного режима
+# Обработчик всех текстовых сообщений
 @bot.message_handler(func=lambda message: True)
 def handle_all_messages(message):
     chat_id = message.chat.id
-    # Если режим не задан, ставим 'own' по умолчанию
-    mode = user_modes.get(chat_id, 'own')
     
+    # Если режим еще не выбран, не ругаемся, а автоматически ставим 'own' (свои фразы)
+    # и мягко подсказываем пользователю, что можно настроить поведение.
+    if chat_id not in user_modes:
+        user_modes[chat_id] = 'own'
+        bot.reply_to(
+            message,
+            "💡 Режим по умолчанию установлен: **Говорить свои фразы**.\n"
+            "Если хочешь изменить поведение (сделать эхо или микс), вызови /start или /mode.",
+            parse_mode='Markdown'
+        )
+
+    mode = user_modes[chat_id]
     text_lower = message.text.lower()
     
-    # Логика генерации ответа в зависимости от режима
+    # Логика ответов
     if mode == 'echo':
-        # Режим «Повторять за мной»
         response = message.text
-        
     elif mode == 'own':
-        # Режим «Только свои фразы» (с умными триггерами)
         if any(word in text_lower for word in ['привет', 'здарова', 'ку', 'здаров', 'хай']):
             response = random.choice(GREETINGS)
         elif any(word in text_lower for word in ['код', 'питон', 'скрипт', 'ошибка', 'баг', 'сервер']):
@@ -120,18 +120,13 @@ def handle_all_messages(message):
             response = random.choice(TOXIC_ROASTS)
         else:
             response = random.choice(ALL_PHRASES)
-            
     elif mode == 'mix':
-        # Режим «Микс»: 50% шанс выдать свою фразу или повторить твою
         if random.choice([True, False]):
             response = message.text
         else:
-            if any(word in text_lower for word in ['привет', 'здарова', 'ку', 'хай']):
-                response = random.choice(GREETINGS)
-            else:
-                response = random.choice(ALL_PHRASES)
+            response = random.choice(ALL_PHRASES)
     else:
-        response = message.text
+        response = random.choice(ALL_PHRASES)
 
     bot.reply_to(message, response)
 
