@@ -142,6 +142,10 @@ def handle_all_messages(message):
     if not text:
         return
 
+    # Устанавливаем статус по умолчанию для чата, если его еще нет
+    if chat_id not in group_toggles:
+        group_toggles[chat_id] = True
+
     # Проверяем, ответили ли на сообщение бота или затегали его
     is_replied_to_bot = (
         message.reply_to_message 
@@ -152,21 +156,19 @@ def handle_all_messages(message):
     is_mentioned = BOT_ID and f"@{bot.get_me().username}" in text
     is_addressed_to_bot = is_replied_to_bot or is_mentioned
 
-    # 1. ПРОВЕРКА КОМАНДЫ «ЗАТКНИСЬ» (если ответили на сообщение бота со словом «Заткнись»)
+    # 1. ЖЕСТКАЯ ПРОВЕРКА «ЗАТКНИСЬ»: если ответили реплаем на бота и написали «заткнись»
     if is_replied_to_bot and 'заткнись' in text.lower():
         group_toggles[chat_id] = False
-        bot.reply_to(message, "Ухожу в глухой офлайн от таких разговоров. 🤐")
+        bot.reply_to(message, "Ухожу в глухой офлайн. 🤐")
         return
 
-    # 2. ПРОВЕРКА КОМАНДЫ «РАБОТАЙ» (если к боту обратились со словом «Работай»)
+    # 2. ПРОВЕРКА «РАБОТАЙ»: если к боту обратились (реплай или тег) со словом «работай»
     if is_addressed_to_bot and 'работай' in text.lower():
         group_toggles[chat_id] = True
         bot.reply_to(message, "Системы запущены, возвращаюсь к работе! ⚙️")
         return
 
-    # Если бот выключен (сказали «Заткнись»), он молчит на всё, кроме «Работай»
-    if chat_id not in group_toggles:
-        group_toggles[chat_id] = True
+    # Если бот выключен (благодаря «Заткнись»), он полностью игнорирует всё, пока не скажут «Работай»
     if not group_toggles[chat_id]:
         return
 
@@ -180,7 +182,7 @@ def handle_all_messages(message):
     is_group = message.chat.type in ['group', 'supergroup']
 
     if is_group and not is_addressed_to_bot:
-        # Если группа и к боту не обращались напрямую — считаем до 15 сообщений
+        # Пассивный режим в группе: считаем до 15 сообщений
         if chat_id not in message_counters:
             message_counters[chat_id] = 0
             
@@ -192,7 +194,7 @@ def handle_all_messages(message):
         else:
             message_counters[chat_id] = 0
 
-    # Если обратились напрямую (или прошло 15 сообщений) — сохраняем и отвечаем
+    # Если обратились напрямую ИЛИ натикало 15 сообщений — сохраняем и отвечаем
     update_history(chat_id, text)
 
     if chat_id not in user_modes:
@@ -239,4 +241,4 @@ def update_history(chat_id, text):
 if __name__ == '__main__':
     print("Бот запущен и готов к работе...")
     bot.infinity_polling(timeout=60, long_polling_timeout=60)
-    
+        
