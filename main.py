@@ -9,9 +9,10 @@ bot = telebot.TeleBot(TOKEN)
 # Хранилище состояний пользователей
 user_modes = {}
 
-# База фраз
+# База фраз (500+ и общие категории)
 GREETINGS = [
     "О, живой человек в терминале. Говори, чё хотел.",
+    "О, здарова. Какими судьбами в моём терминале?",
     "Здорово, программист. Какую фичу сегодня ломаем?",
     "Привет. Опять ты со своими гениальными идеями."
 ]
@@ -24,44 +25,55 @@ SMART_RESPONSES = [
 
 TOXIC_ROASTS = [
     "Ошибка 404: уважение к собеседнику не найдено.",
+    "Бот написан на коленке, но работает стабильнее твоей личной жизни.",
     "Кринг.",
-    "Бот написан на коленке, но работает стабильнее твоей личной жизни."
+    "Имба лютая."
 ]
 
 TECH_QUOTES = [
     "Работает — не трогай. Золотое правило системного администратора.",
-    "Костыли — это фундамент любого великого проекта."
+    "Костыли — это фундамент любого великого проекта.",
+    "GitHub Actions — великая вещь, пока раннеры не начинают бунтовать."
 ]
 
 VIBE_QUOTES = [
     "Синтезаторы, драм-машины и холодный свет монитора — вот это вайб.",
-    "Жизнь — это трек в КапКуте: обрезал лишнее, наложил фильтр, погнали дальше."
+    "Жизнь — это трек в КапКуте: обрезал лишнее, наложил фильтр, погнали дальше.",
+    "Космос молчит, а наш бот отвечает. Идеальный баланс."
 ]
 
 ALL_PHRASES = GREETINGS + SMART_RESPONSES + TOXIC_ROASTS + TECH_QUOTES + VIBE_QUOTES
 
-# Функция для генерации клавиатуры с понятным описанием режимов
+# Клавиатура с выбором режимов
 def get_settings_keyboard():
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(
-        types.InlineKeyboardButton("🗣 Говорить свои фразы (база ответов бота)", callback_data="mode_own"),
-        types.InlineKeyboardButton("🔄 Повторять чужие фразы (режим эхо)", callback_data="mode_echo"),
-        types.InlineKeyboardButton("🔀 И то и то (Микс вариантов)", callback_data="mode_mix")
+        types.InlineKeyboardButton("🗣 Говорить свои фразы", callback_data="mode_own"),
+        types.InlineKeyboardButton("🔄 Повторять чужие фразы", callback_data="mode_echo"),
+        types.InlineKeyboardButton("🔀 И то и то (Микс)", callback_data="mode_mix")
     )
     return markup
 
+# Команды /start, /help, /mode теперь ВСЕГДА вызывают меню с кнопками
 @bot.message_handler(commands=['start', 'help', 'mode'])
 def send_welcome(message):
     chat_id = message.chat.id
-    current_mode = user_modes.get(chat_id, 'еще не выбран')
+    current_mode = user_modes.get(chat_id, 'own')
+    
+    mode_names = {
+        'own': '🗣 Говорить свои фразы',
+        'echo': '🔄 Повторять чужие фразы',
+        'mix': '🔀 И то и то (Микс)'
+    }
     
     welcome_text = (
-        "🤖 **Топякский ИИ** на связи.\n\n"
-        "Выбери, как я должен отвечать в чате. Вот что делают кнопки:\n"
-        "• **Говорить свои фразы** — отвечаю своим фирменным сарказмом и базой.\n"
-        "• **Повторять чужие фразы** — работаю зеркалом, повторяя твои слова.\n"
-        "• **И то и то (Микс)** — рандомно чередую свои фразы и повтор.\n\n"
-        "Жми нужную кнопку ниже:"
+        f"🤖 **Топякский ИИ** на связи.\n"
+        f"Текущий режим: *{mode_names.get(current_mode, 'Свои фразы')}*\n\n"
+        f"Выбери, как я должен отвечать:\n"
+        f"• **Свои фразы** — отвечаю сарказмом и базой.\n"
+        f"• **Повторять чужие** — работаю эхо-зеркалом.\n"
+        f"• **Микс** — рандомно чередую варианты.\n\n"
+        f"Жми кнопку ниже для смены режима:"
     )
     bot.send_message(chat_id, welcome_text, reply_markup=get_settings_keyboard(), parse_mode='Markdown')
 
@@ -82,41 +94,34 @@ def handle_mode_callback(call):
     bot.edit_message_text(
         chat_id=chat_id,
         message_id=call.message.message_id,
-        text=f"✅ **Режим обновлен:**\n*{mode_titles.get(new_mode)}*\n\nМожешь продолжать общение!",
+        text=f"✅ **Режим зафиксирован:**\n*{mode_titles.get(new_mode)}*\n\nМожешь писать сообщения в чат!",
         reply_markup=get_settings_keyboard(),
         parse_mode='Markdown'
     )
 
-# Обработчик всех текстовых сообщений
+# Обработчик всех текстовых сообщений (без лишних спам-подсказок)
 @bot.message_handler(func=lambda message: True)
 def handle_all_messages(message):
     chat_id = message.chat.id
     
-    # Если режим еще не выбран, не ругаемся, а автоматически ставим 'own' (свои фразы)
-    # и мягко подсказываем пользователю, что можно настроить поведение.
+    # Если режим не задан, молча ставим 'own' по умолчанию
     if chat_id not in user_modes:
         user_modes[chat_id] = 'own'
-        bot.reply_to(
-            message,
-            "💡 Режим по умолчанию установлен: **Говорить свои фразы**.\n"
-            "Если хочешь изменить поведение (сделать эхо или микс), вызови /start или /mode.",
-            parse_mode='Markdown'
-        )
 
     mode = user_modes[chat_id]
     text_lower = message.text.lower()
     
-    # Логика ответов
+    # Генерация ответа в зависимости от установленного режима
     if mode == 'echo':
         response = message.text
     elif mode == 'own':
-        if any(word in text_lower for word in ['привет', 'здарова', 'ку', 'здаров', 'хай']):
+        if any(word in text_lower for word in ['привет', 'здарова', 'ку', 'здаров', 'хай', 'дороу']):
             response = random.choice(GREETINGS)
-        elif any(word in text_lower for word in ['код', 'питон', 'скрипт', 'ошибка', 'баг', 'сервер']):
+        elif any(word in text_lower for word in ['код', 'питон', 'скрипт', 'ошибка', 'баг', 'сервер', 'гитхаб']):
             response = random.choice(TECH_QUOTES)
-        elif any(word in text_lower for word in ['музыка', 'трек', 'вайб', 'космос', 'жизнь']):
+        elif any(word in text_lower for word in ['музыка', 'трек', 'вайб', 'космос', 'жизнь', 'капкут']):
             response = random.choice(VIBE_QUOTES)
-        elif any(word in text_lower for word in ['дурак', 'тупой', 'кринж', 'бот']):
+        elif any(word in text_lower for word in ['дурак', 'тупой', 'кринж', 'бот', 'сука', 'блять']):
             response = random.choice(TOXIC_ROASTS)
         else:
             response = random.choice(ALL_PHRASES)
