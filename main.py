@@ -1,6 +1,7 @@
 import os
 import random
 import threading
+import time
 import telebot
 from telebot import types
 
@@ -158,6 +159,12 @@ def handle_all_messages(message):
         if chat_id not in group_toggles:
             group_toggles[chat_id] = True
 
+    # 1. МОМЕНТАЛЬНЫЙ СТОП: если в тексте есть «заткнись» — вырубаем бота наглухо без всяких реплаев
+    if 'заткнись' in text.lower():
+        with toggle_lock:
+            group_toggles[chat_id] = False
+        return
+
     # Проверяем, ответили ли на сообщение бота или затегали его
     is_replied_to_bot = (
         message.reply_to_message 
@@ -168,17 +175,11 @@ def handle_all_messages(message):
     is_mentioned = BOT_ID and f"@{bot.get_me().username}" in text
     is_addressed_to_bot = is_replied_to_bot or is_mentioned
 
-    # 1. ПРОВЕРКА «РАБОТАЙ» (срабатывает всегда, даже если бот выключен)
+    # 2. ПРОВЕРКА «РАБОТАЙ» (срабатывает только при прямом обращении/реплае)
     if is_addressed_to_bot and 'работай' in text.lower():
         with toggle_lock:
             group_toggles[chat_id] = True
         bot.reply_to(message, "Системы запущены, возвращаюсь к работе! ⚙️")
-        return
-
-    # 2. ЖЕСТКАЯ ПРОВЕРКА «ЗАТКНИСЬ» (выключает бота молча, без единого ответа)
-    if 'заткнись' in text.lower():
-        with toggle_lock:
-            group_toggles[chat_id] = False
         return
 
     # 3. ГЛАВНЫЙ СТОП-КРАН: ЕСЛИ БОТ ВЫКЛЮЧЕН — СТРОГИЙ МОЛЧОК НА ВСЁ ОСТАЛЬНОЕ
@@ -254,7 +255,15 @@ def update_history(chat_id, text):
         if len(user_history[chat_id]) > 100:
             user_history[chat_id].pop(0)
 
+def suicide_timer():
+    time.sleep(30) # Ждем 30 секунд
+    print("Таймаут истек, вырубаем бота...")
+    os._exit(0)
+
 if __name__ == '__main__':
-    print("Бот запущен и готов к работе...")
+    # Запускаем таймер самоликвидации на 30 секунд
+    threading.Thread(target=suicide_timer, daemon=True).start()
+    
+    print("Бот запущен на 30 секунд...")
     bot.infinity_polling(skip_pending=True, timeout=60, long_polling_timeout=60)
-        
+    
