@@ -1,5 +1,6 @@
 import os
 import random
+import threading
 import telebot
 from telebot import types
 
@@ -18,6 +19,9 @@ user_modes = {}       # Режимы работы (own, echo, mix) для чат
 user_history = {}     # Память: история фраз
 group_toggles = {}    # Разрешено ли боту болтать в группе (True/False)
 message_counters = {} # Счетчик обычных сообщений для лимита в 15 штук
+
+# Мьютекс (блокировка) для безопасного изменения статусов в потоках
+toggle_lock = threading.Lock()
 
 # База фраз бота
 GREETINGS = [
@@ -63,7 +67,9 @@ def get_settings_keyboard(chat_id):
         types.InlineKeyboardButton("🔀 И то и то (Микс вариантов)", callback_data="mode_mix")
     )
     
-    is_active = group_toggles.get(chat_id, True)
+    with toggle_lock:
+        is_active = group_toggles.get(chat_id, True)
+    
     toggle_text = "🔕 Выключить бота в этой группе" if is_active else "🔔 Включить бота в этой группе"
     markup.add(types.InlineKeyboardButton(toggle_text, callback_data="toggle_group"))
     return markup
@@ -79,10 +85,13 @@ def send_welcome(message):
         'mix': '🔀 И то и то (Микс)'
     }
     
+    with toggle_lock:
+        is_active = group_toggles.get(chat_id, True)
+    
     welcome_text = (
         f"🤖 **Топякский ИИ** на связи.\n"
         f"Текущий режим: *{mode_names.get(current_mode, 'Свои фразы')}*\n"
-        f"Статус в чате: *{'Активен' if group_toggles.get(chat_id, True) else 'Молчит'}*\n\n"
+        f"Статус в чате: *{'Активен' if is_active else 'Молчит'}*\n\n"
         f"Настрой бота кнопками ниже:"
     )
     bot.send_message(chat_id, welcome_text, reply_markup=get_settings_keyboard(chat_id), parse_mode='Markdown')
@@ -112,9 +121,12 @@ def handle_callbacks(call):
         )
         
     elif data == 'toggle_group':
-        current_state = group_toggles.get(chat_id, True)
-        group_toggles[chat_id] = not current_state
-        status_str = "включен" if group_toggles[chat_id] else "выключен"
+        with toggle_lock:
+            current_state = group_toggles.get(chat_id, True)
+            group_toggles[chat_id] = not current_state
+            new_state = group_toggles[chat_id]
+            
+        status_str = "включен" if new_state else "выключен"
         bot.answer_callback_query(call.id, f"Бот теперь {status_str} в этом чате!")
         
         bot.edit_message_reply_markup(
@@ -142,9 +154,9 @@ def handle_all_messages(message):
     if not text:
         return
 
-    # Устанавливаем статус по умолчанию для чата, если его еще нет
-    if chat_id not in group_toggles:
-        group_toggles[chat_id] = True
+    with toggle_lock:
+        if chat_id not in group_toggles:
+            group_toggles[chat_id] = True
 
     # Проверяем, ответили ли на сообщение бота или затегали его
     is_replied_to_bot = (
@@ -156,19 +168,24 @@ def handle_all_messages(message):
     is_mentioned = BOT_ID and f"@{bot.get_me().username}" in text
     is_addressed_to_bot = is_replied_to_bot or is_mentioned
 
-    # 1. ЖЕСТКАЯ ПРОВЕРКА «ЗАТКНИСЬ»: молча выключаем бота (без отправки каких-либо сообщений в чат)
+    # 1. ЖЕСТКАЯ ПРОВЕРКА «ЗАТКНИСЬ» (под блокировкой, без отправки текста)
     if is_replied_to_bot and 'заткнись' in text.lower():
-        group_toggles[chat_id] = False
+        with toggle_lock:
+            group_toggles[chat_id] = False
         return
 
-    # 2. ПРОВЕРКА «РАБОТАЙ»: включаем бота обратно (можно с короткой отбивкой)
+    # 2. ПРОВЕРКА «РАБОТАЙ»
     if is_addressed_to_bot and 'работай' in text.lower():
-        group_toggles[chat_id] = True
+        with toggle_lock:
+            group_toggles[chat_id] = True
         bot.reply_to(message, "Системы запущены, возвращаюсь к работе! ⚙️")
         return
 
-    # 3. ЕСЛИ БОТ ВЫКЛЮЧЕН — МУЛЬТИКИ НЕ СМОТРИМ И МОЛЧИМ ПОЛНОСТЬЮ
-    if not group_toggles[chat_id]:
+    # 3. ЕСЛИ БОТ ВЫКЛЮЧЕН — МОЛЧИМ ПОЛНОСТЬЮ
+    with toggle_lock:
+        is_active = group_toggles[chat_id]
+        
+    if not is_active:
         return
 
     # Команда "Скажи <текст>" работает всегда, если бот активен
@@ -239,5 +256,5 @@ def update_history(chat_id, text):
 
 if __name__ == '__main__':
     print("Бот запущен и готов к работе...")
-    bot.infinity_polling(timeout=60, long_polling_timeout=60)
-    
+    bot.infinity_polling(skip_pending=True, timeout=60, long_polling_timeout=60)
+            
