@@ -1,7 +1,6 @@
 import os
 import random
 import threading
-import time
 import telebot
 from telebot import types
 
@@ -18,10 +17,9 @@ except Exception:
 # Хранилища состояний, памяти и счетчиков
 user_modes = {}       # Режимы работы (own, echo, mix) для чатов
 user_history = {}     # Память: история фраз
-group_toggles = {}    # Разрешено ли боту болтать в группе (True/False)
 message_counters = {} # Счетчик обычных сообщений для лимита в 15 штук
 
-# Мьютекс (блокировка) для безопасного изменения статусов в потоках
+# Мьютекс (блокировка) для безопасного изменения статусов
 toggle_lock = threading.Lock()
 
 # База фраз бота
@@ -67,15 +65,9 @@ def get_settings_keyboard(chat_id):
         types.InlineKeyboardButton("🔄 Повторять чужие фразы (из истории)", callback_data="mode_echo"),
         types.InlineKeyboardButton("🔀 И то и то (Микс вариантов)", callback_data="mode_mix")
     )
-    
-    with toggle_lock:
-        is_active = group_toggles.get(chat_id, True)
-    
-    toggle_text = "🔕 Выключить бота в этой группе" if is_active else "🔔 Включить бота в этой группе"
-    markup.add(types.InlineKeyboardButton(toggle_text, callback_data="toggle_group"))
     return markup
 
-@bot.message_handler(commands=['start', 'help', 'mode', 'toggle'])
+@bot.message_handler(commands=['start', 'help', 'mode'])
 def send_welcome(message):
     chat_id = message.chat.id
     current_mode = user_modes.get(chat_id, 'own')
@@ -86,13 +78,9 @@ def send_welcome(message):
         'mix': '🔀 И то и то (Микс)'
     }
     
-    with toggle_lock:
-        is_active = group_toggles.get(chat_id, True)
-    
     welcome_text = (
         f"🤖 **Топякский ИИ** на связи.\n"
-        f"Текущий режим: *{mode_names.get(current_mode, 'Свои фразы')}*\n"
-        f"Статус в чате: *{'Активен' if is_active else 'Молчит'}*\n\n"
+        f"Текущий режим: *{mode_names.get(current_mode, 'Свои фразы')}*\n\n"
         f"Настрой бота кнопками ниже:"
     )
     bot.send_message(chat_id, welcome_text, reply_markup=get_settings_keyboard(chat_id), parse_mode='Markdown')
@@ -120,21 +108,6 @@ def handle_callbacks(call):
             reply_markup=get_settings_keyboard(chat_id),
             parse_mode='Markdown'
         )
-        
-    elif data == 'toggle_group':
-        with toggle_lock:
-            current_state = group_toggles.get(chat_id, True)
-            group_toggles[chat_id] = not current_state
-            new_state = group_toggles[chat_id]
-            
-        status_str = "включен" if new_state else "выключен"
-        bot.answer_callback_query(call.id, f"Бот теперь {status_str} в этом чате!")
-        
-        bot.edit_message_reply_markup(
-            chat_id=chat_id,
-            message_id=call.message.message_id,
-            reply_markup=get_settings_keyboard(chat_id)
-        )
 
 # Обработчик всех текстовых сообщений
 @bot.message_handler(func=lambda message: True, content_types=['text'])
@@ -155,16 +128,6 @@ def handle_all_messages(message):
     if not text:
         return
 
-    with toggle_lock:
-        if chat_id not in group_toggles:
-            group_toggles[chat_id] = True
-
-    # 1. МОМЕНТАЛЬНЫЙ СТОП: если в тексте есть «заткнись» — вырубаем бота наглухо без всяких реплаев
-    if 'заткнись' in text.lower():
-        with toggle_lock:
-            group_toggles[chat_id] = False
-        return
-
     # Проверяем, ответили ли на сообщение бота или затегали его
     is_replied_to_bot = (
         message.reply_to_message 
@@ -175,21 +138,7 @@ def handle_all_messages(message):
     is_mentioned = BOT_ID and f"@{bot.get_me().username}" in text
     is_addressed_to_bot = is_replied_to_bot or is_mentioned
 
-    # 2. ПРОВЕРКА «РАБОТАЙ» (срабатывает только при прямом обращении/реплае)
-    if is_addressed_to_bot and 'работай' in text.lower():
-        with toggle_lock:
-            group_toggles[chat_id] = True
-        bot.reply_to(message, "Системы запущены, возвращаюсь к работе! ⚙️")
-        return
-
-    # 3. ГЛАВНЫЙ СТОП-КРАН: ЕСЛИ БОТ ВЫКЛЮЧЕН — СТРОГИЙ МОЛЧОК НА ВСЁ ОСТАЛЬНОЕ
-    with toggle_lock:
-        is_active = group_toggles[chat_id]
-        
-    if not is_active:
-        return
-
-    # Команда "Скажи <текст>" работает только когда бот активен
+    # Команда "Скажи <текст>"
     if text.lower().startswith('скажи '):
         phrase_to_say = text[6:].strip()
         if phrase_to_say:
@@ -199,19 +148,21 @@ def handle_all_messages(message):
     is_group = message.chat.type in ['group', 'supergroup']
 
     if is_group and not is_addressed_to_bot:
-        # Пассивный режим в группе: считаем до 15 сообщений
+        # Пассивный режим в группе: считаем ровно до 15 сообщений
         if chat_id not in message_counters:
             message_counters[chat_id] = 0
             
         message_counters[chat_id] += 1
         update_history(chat_id, text)
         
+        # Если еще не натикало 15 сообщений — молчим
         if message_counters[chat_id] < 15:
             return
         else:
+            # Натикало 15 — сбрасываем счетчик и отвечаем
             message_counters[chat_id] = 0
 
-    # Если обратились напрямую ИЛИ натикало 15 сообщений — сохраняем и отвечаем
+    # Если обратились напрямую ИЛИ натикало ровно 15 сообщений
     update_history(chat_id, text)
 
     if chat_id not in user_modes:
@@ -255,15 +206,7 @@ def update_history(chat_id, text):
         if len(user_history[chat_id]) > 100:
             user_history[chat_id].pop(0)
 
-def suicide_timer():
-    time.sleep(30) # Ждем 30 секунд
-    print("Таймаут истек, вырубаем бота...")
-    os._exit(0)
-
 if __name__ == '__main__':
-    # Запускаем таймер самоликвидации на 30 секунд
-    threading.Thread(target=suicide_timer, daemon=True).start()
-    
-    print("Бот запущен на 30 секунд...")
+    print("Бот запущен...")
     bot.infinity_polling(skip_pending=True, timeout=60, long_polling_timeout=60)
-    
+            
