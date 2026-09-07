@@ -1,33 +1,226 @@
-name: Telegram Bot Runner
+import os
+import random
+import requests
+import telebot
+from telebot import types
+from telebot.types import ReactionTypeEmoji
 
-on:
-  push:
-    branches: [ main ]
-  schedule:
-    # Запуск каждые 5 часов, чтобы GitHub не успевал принудительно гасить раннер
-    - cron: '0 */5 * * *'
+from phrases import SMART_DATABASE, ALL_BASE_PHRASES, AVAILABLE_REACTIONS, QUIZ_QUESTIONS
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
+TOKEN = os.getenv('TOKEN')
+GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')  # Твой GitHub Personal Access Token
+REPO_NAME = os.getenv('REPO_NAME')        # Формат: "имя_пользователя/имя_репозитория"
 
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
+bot = telebot.TeleBot(TOKEN)
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
+BOT_ID = None
+try:
+    BOT_ID = bot.get_me().id
+except Exception:
+    pass
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install pyTelegramBotAPI
+user_modes = {}       
+user_history = {}     
+message_counters = {} 
+active_games = {}     
 
-    - name: Run bot
-      env:
-        TOKEN: ${{ secrets.TOKEN }}
-      run: |
-        python main.py
+def get_settings_keyboard(chat_id):
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        types.InlineKeyboardButton("🗣 Точечные ответы базы", callback_data="mode_own"),
+        types.InlineKeyboardButton("🔄 Повторять чужие фразы", callback_data="mode_echo"),
+        types.InlineKeyboardButton("🔀 Микс вариантов", callback_data="mode_mix"),
+        types.InlineKeyboardButton("🎮 Сыграть в угадайку", callback_data="start_quiz"),
+        types.InlineKeyboardButton("🔄 Перезапустить бота (GitHub)", callback_data="trigger_reboot")
+    )
+    return markup
+
+@bot.message_handler(commands=['start', 'help', 'mode', 'quiz', 'reboot'])
+def send_welcome(message):
+    chat_id = message.chat.id
+    
+    if message.text.startswith('/quiz'):
+        start_quiz_game(message)
+        return
         
+    if message.text.startswith('/reboot'):
+        trigger_github_workflow(message)
+        return
+
+    current_mode = user_modes.get(chat_id, 'own')
+    mode_names = {
+        'own': '🗣 Точечные ответы базы',
+        'echo': '🔄 Повторять чужие фразы',
+        'mix': '🔀 Микс вариантов'
+    }
+    
+    welcome_text = (
+        f"🤖 **Топякский ИИ** на связи.\n"
+        f"Текущий режим: *{mode_names.get(current_mode, 'Точечные ответы')}*\n\n"
+        f"Управление деплоем через GitHub Actions активно!"
+    )
+    bot.send_message(chat_id, welcome_text, reply_markup=get_settings_keyboard(chat_id), parse_mode='Markdown')
+
+def trigger_github_workflow(message):
+    chat_id = message.chat.id
+    if not GITHUB_TOKEN or not REPO_NAME:
+        bot.reply_to(message, "⚠️ Ошибка: На GitHub не прописаны секреты GITHUB_TOKEN или REPO_NAME!")
+        return
+
+    url = f"https://api.github.com/repos/{REPO_NAME}/actions/workflows/bot.yml/dispatches"
+    headers = {
+        "Authorization": f"Bearer {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github+json"
+    }
+    data = {"ref": "main"}  # или master, смотря какая у тебя ветка
+
+    try:
+        response = requests.post(url, json=data, headers=headers)
+        if response.status_code == 204:
+            bot.reply_to(message, "🚀 Сигнал отправлен! GitHub Actions перезапускает воркфлоу...")
+        else:
+            bot.reply_to(message, f"❌ Ошибка вызова GitHub API: статус {response.status_code}")
+    except Exception as e:
+        bot.reply_to(message, f"❌ Не удалось отправить запрос: {e}")
+
+def start_quiz_game(message):
+    chat_id = message.chat.id
+    q = random.choice(QUIZ_QUESTIONS)
+    active_games[chat_id] = q['answer'].lower()
+    bot.send_message(chat_id, f"🎮 **Мини-игра Угадайка за запущена!**\n\nВопрос: *{q['question']}*\n\nНапиши ответ прямо в чат!")
+
+@bot.callback_query_handler(func=lambda call: True)
+def handle_callbacks(call):
+    chat_id = call.message.chat.id
+    data = call.data
+    
+    if data.startswith('mode_'):
+        new_mode = data.split('_')[1]
+        user_modes[chat_id] = new_mode
+        bot.answer_callback_query(call.id, "Режим изменен!")
+        
+        mode_titles = {
+            'own': '🗣 Точечные ответы базы',
+            'echo': '🔄 Повторять чужие фразы',
+            'mix': '🔀 Микс вариантов'
+        }
+        bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=call.message.message_id,
+            text=f"✅ **Режим обновлен:**\n*{mode_titles.get(new_mode)}*\n\nНастройки чата:",
+            reply_markup=get_settings_keyboard(chat_id),
+            parse_mode='Markdown'
+        )
+    elif data == 'start_quiz':
+        bot.answer_callback_query(call.id, "Игра началась!")
+        start_quiz_game(call.message)
+    elif data == 'trigger_reboot':
+        bot.answer_callback_query(call.id, "Запуск рестарта...")
+        trigger_github_workflow(call.message)
+
+@bot.message_handler(func=lambda message: True, content_types=['text'])
+def handle_all_messages(message):
+    global BOT_ID
+    if not BOT_ID:
+        try:
+            BOT_ID = bot.get_me().id
+        except Exception:
+            pass
+
+    if BOT_ID and message.from_user.id == BOT_ID:
+        return
+
+    chat_id = message.chat.id
+    text = message.text
+    if not text:
+        return
+
+    if chat_id in active_games:
+        if text.lower().strip() == active_games[chat_id]:
+            bot.reply_to(message, "🎉 Красава! Ты абсолютно прав, ответ засчитан!")
+            del active_games[chat_id]
+            return
+
+    is_replied_to_bot = (
+        message.reply_to_message 
+        and message.reply_to_message.from_user 
+        and BOT_ID 
+        and message.reply_to_message.from_user.id == BOT_ID
+    )
+    is_mentioned = BOT_ID and f"@{bot.get_me().username}" in text
+    is_addressed_to_bot = is_replied_to_bot or is_mentioned
+
+    if text.lower().startswith('скажи '):
+        phrase_to_say = text[6:].strip()
+        if phrase_to_say:
+            bot.reply_to(message, phrase_to_say)
+        return
+
+    is_group = message.chat.type in ['group', 'supergroup']
+
+    if is_group and not is_addressed_to_bot:
+        if chat_id not in message_counters:
+            message_counters[chat_id] = 0
+            
+        message_counters[chat_id] += 1
+        update_history(chat_id, text)
+        
+        if message_counters[chat_id] < 15:
+            return
+        else:
+            message_counters[chat_id] = 0
+            if random.choice([True, False]):
+                try:
+                    chosen_emoji = random.choice(AVAILABLE_REACTIONS)
+                    bot.set_message_reaction(chat_id, message.id, [ReactionTypeEmoji(emoji=chosen_emoji)], is_big=False)
+                except Exception:
+                    pass
+                return
+
+    update_history(chat_id, text)
+
+    if chat_id not in user_modes:
+        user_modes[chat_id] = 'own'
+
+    mode = user_modes[chat_id]
+    
+    if mode == 'echo':
+        if user_history[chat_id] and len(user_history[chat_id]) > 1:
+            past_phrases = [p for p in user_history[chat_id] if p != text]
+            response = random.choice(past_phrases) if past_phrases else text
+        else:
+            response = text
+            
+    elif mode == 'mix':
+        pool = ALL_BASE_PHRASES.copy()
+        if user_history[chat_id]:
+            pool.extend(user_history[chat_id])
+        response = random.choice(pool)
+        
+    else:
+        text_lower = text.lower()
+        if any(w in text_lower for w in ['привет', 'здарова', 'ку', 'здаров', 'хай', 'дороу', 'салам']):
+            response = random.choice(SMART_DATABASE["greetings"])
+        elif any(w in text_lower for w in ['код', 'питон', 'скрипт', 'ошибка', 'баг', 'сервер', 'гитхаб', 'раннер', 'деплой']):
+            response = random.choice(SMART_DATABASE["tech"])
+        elif any(w in text_lower for w in ['музыка', 'трек', 'вайб', 'космос', 'жизнь', 'капкут', 'песня', 'звук']):
+            response = random.choice(SMART_DATABASE["vibe"])
+        elif any(w in text_lower for w in ['дурак', 'тупой', 'кринж', 'бот', 'сука', 'блять', 'душно', 'уголовка']):
+            response = random.choice(SMART_DATABASE["toxic"])
+        else:
+            response = random.choice(SMART_DATABASE["smart"] + ALL_BASE_PHRASES)
+
+    bot.reply_to(message, response)
+
+def update_history(chat_id, text):
+    if chat_id not in user_history:
+        user_history[chat_id] = []
+    if text not in user_history[chat_id]:
+        user_history[chat_id].append(text)
+        if len(user_history[chat_id]) > 100:
+            user_history[chat_id].pop(0)
+
+if __name__ == '__main__':
+    print("Бот запущен с поддержкой управления GitHub Actions...")
+    bot.infinity_polling(skip_pending=True, timeout=60, long_polling_timeout=60)
+    
