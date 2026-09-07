@@ -3,6 +3,7 @@ import random
 import threading
 import telebot
 from telebot import types
+from telebot.types import ReactionTypeEmoji
 
 TOKEN = os.getenv('TOKEN')
 bot = telebot.TeleBot(TOKEN)
@@ -18,9 +19,7 @@ except Exception:
 user_modes = {}       # Режимы работы (own, echo, mix) для чатов
 user_history = {}     # Память: история фраз
 message_counters = {} # Счетчик обычных сообщений для лимита в 15 штук
-
-# Мьютекс (блокировка) для безопасного изменения статусов
-toggle_lock = threading.Lock()
+active_games = {}     # Активные мини-игры в чатах
 
 # База фраз бота
 GREETINGS = [
@@ -57,20 +56,36 @@ VIBE_QUOTES = [
 
 ALL_BASE_PHRASES = GREETINGS + SMART_RESPONSES + TOXIC_ROASTS + TECH_QUOTES + VIBE_QUOTES
 
+# Набор реакций для авто-реакций (Фича №1)
+AVAILABLE_REACTIONS = ["🔥", "👍", "👎", "💩", "😱", "🕊", "🤡", "⚡️", "🌚"]
+
+# База для мини-игры "Угадай песню/цитату" (Фича №4)
+QUIZ_QUESTIONS = [
+    {"question": "Какая группа исполняет бессмертный хит про «Группу крови на рукаве»?", "answer": "кино"},
+    {"question": "В каком приложении на ПК создаются лучшие треки дома?", "answer": "капкут"},
+    {"question": "Что великое и беспощадное иногда бунтует в GitHub?", "answer": "раннеры"},
+    {"question": "Какая оценка IQ идеально подходит кодеку Топяка?", "answer": "140"}
+]
+
 # Клавиатура с выбором режимов
 def get_settings_keyboard(chat_id):
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(
         types.InlineKeyboardButton("🗣 Говорить свои фразы (база бота)", callback_data="mode_own"),
         types.InlineKeyboardButton("🔄 Повторять чужие фразы (из истории)", callback_data="mode_echo"),
-        types.InlineKeyboardButton("🔀 И то и то (Микс вариантов)", callback_data="mode_mix")
+        types.InlineKeyboardButton("🔀 И то и то (Микс вариантов)", callback_data="mode_mix"),
+        types.InlineKeyboardButton("🎮 Сыграть в угадайку", callback_data="start_quiz")
     )
     return markup
 
-@bot.message_handler(commands=['start', 'help', 'mode'])
+@bot.message_handler(commands=['start', 'help', 'mode', 'quiz'])
 def send_welcome(message):
     chat_id = message.chat.id
     current_mode = user_modes.get(chat_id, 'own')
+    
+    if message.text.startswith('/quiz'):
+        start_quiz_game(message)
+        return
     
     mode_names = {
         'own': '🗣 Говорить свои фразы',
@@ -81,9 +96,15 @@ def send_welcome(message):
     welcome_text = (
         f"🤖 **Топякский ИИ** на связи.\n"
         f"Текущий режим: *{mode_names.get(current_mode, 'Свои фразы')}*\n\n"
-        f"Настрой бота кнопками ниже:"
+        f"Настрой бота кнопками ниже или запусти игру:"
     )
     bot.send_message(chat_id, welcome_text, reply_markup=get_settings_keyboard(chat_id), parse_mode='Markdown')
+
+def start_quiz_game(message):
+    chat_id = message.chat.id
+    q = random.choice(QUIZ_QUESTIONS)
+    active_games[chat_id] = q['answer'].lower()
+    bot.send_message(chat_id, f"🎮 **Мини-игра Угадайка за запущена!**\n\nВопрос: *{q['question']}*\n\nНапиши ответ прямо в чат!")
 
 # Обработка нажатий на инлайн-кнопки
 @bot.callback_query_handler(func=lambda call: True)
@@ -108,6 +129,9 @@ def handle_callbacks(call):
             reply_markup=get_settings_keyboard(chat_id),
             parse_mode='Markdown'
         )
+    elif data == 'start_quiz':
+        bot.answer_callback_query(call.id, "Игра началась!")
+        start_quiz_game(call.message)
 
 # Обработчик всех текстовых сообщений
 @bot.message_handler(func=lambda message: True, content_types=['text'])
@@ -119,7 +143,6 @@ def handle_all_messages(message):
         except Exception:
             pass
 
-    # Стоп-кран: не отвечаем сами на себя
     if BOT_ID and message.from_user.id == BOT_ID:
         return
 
@@ -127,6 +150,13 @@ def handle_all_messages(message):
     text = message.text
     if not text:
         return
+
+    # Проверка ответов на мини-игру (Фича №4)
+    if chat_id in active_games:
+        if text.lower().strip() == active_games[chat_id]:
+            bot.reply_to(message, "🎉 Красава! Ты абсолютно прав, ответ засчитан!")
+            del active_games[chat_id]
+            return
 
     # Проверяем, ответили ли на сообщение бота или затегали его
     is_replied_to_bot = (
@@ -138,7 +168,6 @@ def handle_all_messages(message):
     is_mentioned = BOT_ID and f"@{bot.get_me().username}" in text
     is_addressed_to_bot = is_replied_to_bot or is_mentioned
 
-    # Команда "Скажи <текст>"
     if text.lower().startswith('скажи '):
         phrase_to_say = text[6:].strip()
         if phrase_to_say:
@@ -148,21 +177,25 @@ def handle_all_messages(message):
     is_group = message.chat.type in ['group', 'supergroup']
 
     if is_group and not is_addressed_to_bot:
-        # Пассивный режим в группе: считаем ровно до 15 сообщений
         if chat_id not in message_counters:
             message_counters[chat_id] = 0
             
         message_counters[chat_id] += 1
         update_history(chat_id, text)
         
-        # Если еще не натикало 15 сообщений — молчим
         if message_counters[chat_id] < 15:
             return
         else:
-            # Натикало 15 — сбрасываем счетчик и отвечаем
             message_counters[chat_id] = 0
+            # ФИЧА №1: Вместо ответа текстом бот может молча поставить реакцию на сообщение!
+            if random.choice([True, False]):
+                try:
+                    chosen_emoji = random.choice(AVAILABLE_REACTIONS)
+                    bot.set_message_reaction(chat_id, message.id, [ReactionTypeEmoji(emoji=chosen_emoji)], is_big=False)
+                except Exception:
+                    pass
+                return
 
-    # Если обратились напрямую ИЛИ натикало ровно 15 сообщений
     update_history(chat_id, text)
 
     if chat_id not in user_modes:
@@ -207,6 +240,6 @@ def update_history(chat_id, text):
             user_history[chat_id].pop(0)
 
 if __name__ == '__main__':
-    print("Бот запущен...")
+    print("Бот запущен с авто-реакциями и угадайкой...")
     bot.infinity_polling(skip_pending=True, timeout=60, long_polling_timeout=60)
-            
+                     
