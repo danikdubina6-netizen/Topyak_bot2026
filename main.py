@@ -142,13 +142,35 @@ def handle_all_messages(message):
     if not text:
         return
 
-    # Проверка активности бота в чате
+    # Проверяем, ответили ли на сообщение бота или затегали его
+    is_replied_to_bot = (
+        message.reply_to_message 
+        and message.reply_to_message.from_user 
+        and BOT_ID 
+        and message.reply_to_message.from_user.id == BOT_ID
+    )
+    is_mentioned = BOT_ID and f"@{bot.get_me().username}" in text
+    is_addressed_to_bot = is_replied_to_bot or is_mentioned
+
+    # 1. ПРОВЕРКА КОМАНДЫ «ЗАТКНИСЬ» (если ответили на сообщение бота со словом «Заткнись»)
+    if is_replied_to_bot and 'заткнись' in text.lower():
+        group_toggles[chat_id] = False
+        bot.reply_to(message, "Ухожу в глухой офлайн от таких разговоров. 🤐")
+        return
+
+    # 2. ПРОВЕРКА КОМАНДЫ «РАБОТАЙ» (если к боту обратились со словом «Работай»)
+    if is_addressed_to_bot and 'работай' in text.lower():
+        group_toggles[chat_id] = True
+        bot.reply_to(message, "Системы запущены, возвращаюсь к работе! ⚙️")
+        return
+
+    # Если бот выключен (сказали «Заткнись»), он молчит на всё, кроме «Работай»
     if chat_id not in group_toggles:
         group_toggles[chat_id] = True
     if not group_toggles[chat_id]:
         return
 
-    # Команда "Скажи <текст>" работает всегда
+    # Команда "Скажи <текст>" работает всегда, если бот активен
     if text.lower().startswith('скажи '):
         phrase_to_say = text[6:].strip()
         if phrase_to_say:
@@ -156,45 +178,28 @@ def handle_all_messages(message):
         return
 
     is_group = message.chat.type in ['group', 'supergroup']
-    
-    # Проверяем, обратились ли к боту напрямую (ответили на его сообщение или тегнули)
-    is_replied_to_bot = (
-        message.reply_to_message 
-        and message.reply_to_message.from_user 
-        and BOT_ID 
-        and message.reply_to_message.from_user.id == BOT_ID
-    )
-    
-    is_mentioned = BOT_ID and f"@{bot.get_me().username}" in text
-
-    is_addressed_to_bot = is_replied_to_bot or is_mentioned
 
     if is_group and not is_addressed_to_bot:
-        # Если это группа, и к боту НЕ обратились напрямую — считаем до 15 сообщений
+        # Если группа и к боту не обращались напрямую — считаем до 15 сообщений
         if chat_id not in message_counters:
             message_counters[chat_id] = 0
             
         message_counters[chat_id] += 1
-        
-        # Сохраняем в историю и молчим, пока не накопится 15 штук
         update_history(chat_id, text)
         
         if message_counters[chat_id] < 15:
             return
         else:
-            # Накопилось 15 сообщений — сбрасываем счетчик и отвечаем
             message_counters[chat_id] = 0
 
-    # Если к боту обратились напрямую — сбрасывать счетчик необязательно, но отвечаем сразу!
+    # Если обратились напрямую (или прошло 15 сообщений) — сохраняем и отвечаем
     update_history(chat_id, text)
 
-    # Инициализация режима
     if chat_id not in user_modes:
         user_modes[chat_id] = 'own'
 
     mode = user_modes[chat_id]
     
-    # Генерация ответа в зависимости от режима
     if mode == 'echo':
         if user_history[chat_id] and len(user_history[chat_id]) > 1:
             past_phrases = [p for p in user_history[chat_id] if p != text]
@@ -234,4 +239,4 @@ def update_history(chat_id, text):
 if __name__ == '__main__':
     print("Бот запущен и готов к работе...")
     bot.infinity_polling(timeout=60, long_polling_timeout=60)
-            
+    
