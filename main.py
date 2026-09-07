@@ -168,27 +168,27 @@ def handle_all_messages(message):
     is_mentioned = BOT_ID and f"@{bot.get_me().username}" in text
     is_addressed_to_bot = is_replied_to_bot or is_mentioned
 
-    # 1. ЖЕСТКАЯ ПРОВЕРКА «ЗАТКНИСЬ» (под блокировкой, без отправки текста)
-    if is_replied_to_bot and 'заткнись' in text.lower():
-        with toggle_lock:
-            group_toggles[chat_id] = False
-        return
-
-    # 2. ПРОВЕРКА «РАБОТАЙ»
+    # 1. ПРОВЕРКА «РАБОТАЙ» (срабатывает всегда, даже если бот выключен)
     if is_addressed_to_bot and 'работай' in text.lower():
         with toggle_lock:
             group_toggles[chat_id] = True
         bot.reply_to(message, "Системы запущены, возвращаюсь к работе! ⚙️")
         return
 
-    # 3. ЕСЛИ БОТ ВЫКЛЮЧЕН — МОЛЧИМ ПОЛНОСТЬЮ
+    # 2. ЖЕСТКАЯ ПРОВЕРКА «ЗАТКНИСЬ» (выключает бота молча, без единого ответа)
+    if 'заткнись' in text.lower():
+        with toggle_lock:
+            group_toggles[chat_id] = False
+        return
+
+    # 3. ГЛАВНЫЙ СТОП-КРАН: ЕСЛИ БОТ ВЫКЛЮЧЕН — СТРОГИЙ МОЛЧОК НА ВСЁ ОСТАЛЬНОЕ
     with toggle_lock:
         is_active = group_toggles[chat_id]
         
     if not is_active:
         return
 
-    # Команда "Скажи <текст>" работает всегда, если бот активен
+    # Команда "Скажи <текст>" работает только когда бот активен
     if text.lower().startswith('скажи '):
         phrase_to_say = text[6:].strip()
         if phrase_to_say:
@@ -257,4 +257,4 @@ def update_history(chat_id, text):
 if __name__ == '__main__':
     print("Бот запущен и готов к работе...")
     bot.infinity_polling(skip_pending=True, timeout=60, long_polling_timeout=60)
-            
+        
