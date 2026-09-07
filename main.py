@@ -8,7 +8,7 @@ bot = telebot.TeleBot(TOKEN)
 
 # Хранилища состояний и памяти
 user_modes = {}      # Режимы работы для чатов
-user_history = {}    # Память: история фраз, сказанных пользователем
+user_history = {}    # Память: история фраз пользователя
 
 # База фраз бота
 GREETINGS = [
@@ -101,11 +101,11 @@ def handle_all_messages(message):
     chat_id = message.chat.id
     text = message.text
     
-    # 1. Режим по умолчанию
+    # Режим по умолчанию
     if chat_id not in user_modes:
         user_modes[chat_id] = 'own'
 
-    # 2. Сохраняем фразу в память чата (историю) для режима Микс
+    # Сохраняем фразу в память чата (историю)
     if chat_id not in user_history:
         user_history[chat_id] = []
     
@@ -115,15 +115,34 @@ def handle_all_messages(message):
             user_history[chat_id].pop(0)
 
     mode = user_modes[chat_id]
-    text_lower = text.lower()
     
-    # 3. Четкое разделение логики по режимам (никаких лишних срабатываний)
+    # ЖЕСТКАЯ ПРОВЕРКА РЕЖИМОВ НА САМОМ ВЕРХУ
+    
     if mode == 'echo':
-        # СТРОГОЕ ЭХО: бот отвечает ровно тем текстом, который прислал пользователь, и больше ничем
-        response = text
-        
-    elif mode == 'own':
-        # ТОЛЬКО СВОИ ФРАЗЫ: бот отвечает фразами из своей базы (иногда вспоминает историю)
+        # 1. СТРОГОЕ ЭХО: возвращаем ТОЛЬКО текст пользователя и сразу выходим (return)
+        bot.reply_to(message, text)
+        return
+
+    elif mode == 'mix':
+        # 2. МИКС: выбираем из базы, текущего текста или истории
+        choice_pool = ['current', 'base']
+        if user_history[chat_id]:
+            choice_pool.append('history')
+            
+        selected_source = random.choice(choice_pool)
+        if selected_source == 'current':
+            response = text
+        elif selected_source == 'history':
+            response = random.choice(user_history[chat_id])
+        else:
+            response = random.choice(ALL_PHRASES)
+            
+        bot.reply_to(message, response)
+        return
+
+    else:
+        # 3. ТОЛЬКО СВОИ ФРАЗЫ (дефолт)
+        text_lower = text.lower()
         if user_history[chat_id] and len(user_history[chat_id]) > 3 and random.random() < 0.2:
             response = random.choice(user_history[chat_id])
         else:
@@ -138,24 +157,8 @@ def handle_all_messages(message):
             else:
                 response = random.choice(ALL_PHRASES)
                 
-    elif mode == 'mix':
-        # МИКС: рандомно выбирает: повторить текущий текст, достать из архива истории или взять фразу из базы
-        choice_pool = ['current', 'base']
-        if user_history[chat_id]:
-            choice_pool.append('history')
-            
-        selected_source = random.choice(choice_pool)
-        
-        if selected_source == 'current':
-            response = text
-        elif selected_source == 'history':
-            response = random.choice(user_history[chat_id])
-        else:
-            response = random.choice(ALL_PHRASES)
-    else:
-        response = random.choice(ALL_PHRASES)
-
-    bot.reply_to(message, response)
+        bot.reply_to(message, response)
+        return
 
 if __name__ == '__main__':
     print("Бот запущен и готов к работе...")
