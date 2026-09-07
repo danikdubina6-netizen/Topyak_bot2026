@@ -156,19 +156,18 @@ def handle_all_messages(message):
     is_mentioned = BOT_ID and f"@{bot.get_me().username}" in text
     is_addressed_to_bot = is_replied_to_bot or is_mentioned
 
-    # 1. ЖЕСТКАЯ ПРОВЕРКА «ЗАТКНИСЬ»: если ответили реплаем на бота и написали «заткнись»
+    # 1. ЖЕСТКАЯ ПРОВЕРКА «ЗАТКНИСЬ»: молча выключаем бота (без отправки каких-либо сообщений в чат)
     if is_replied_to_bot and 'заткнись' in text.lower():
         group_toggles[chat_id] = False
-        bot.reply_to(message, "Ухожу в глухой офлайн. 🤐")
         return
 
-    # 2. ПРОВЕРКА «РАБОТАЙ»: если к боту обратились (реплай или тег) со словом «работай»
+    # 2. ПРОВЕРКА «РАБОТАЙ»: включаем бота обратно (можно с короткой отбивкой)
     if is_addressed_to_bot and 'работай' in text.lower():
         group_toggles[chat_id] = True
         bot.reply_to(message, "Системы запущены, возвращаюсь к работе! ⚙️")
         return
 
-    # Если бот выключен (благодаря «Заткнись»), он полностью игнорирует всё, пока не скажут «Работай»
+    # 3. ЕСЛИ БОТ ВЫКЛЮЧЕН — МУЛЬТИКИ НЕ СМОТРИМ И МОЛЧИМ ПОЛНОСТЬЮ
     if not group_toggles[chat_id]:
         return
 
@@ -241,4 +240,4 @@ def update_history(chat_id, text):
 if __name__ == '__main__':
     print("Бот запущен и готов к работе...")
     bot.infinity_polling(timeout=60, long_polling_timeout=60)
-        
+    
