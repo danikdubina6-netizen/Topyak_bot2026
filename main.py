@@ -6,11 +6,11 @@ from telebot import types
 TOKEN = os.getenv('TOKEN')
 bot = telebot.TeleBot(TOKEN)
 
-# Хранилища состояний и памяти пользователей
+# Хранилища состояний и памяти
 user_modes = {}      # Режимы работы для чатов
-user_history = {}    # Память: история фраз, сказанных пользователем в этом чате
+user_history = {}    # Память: история фраз, сказанных пользователем
 
-# База фраз
+# База фраз бота
 GREETINGS = [
     "О, живой человек в терминале. Говори, чё хотел.",
     "О, здарова. Какими судьбами в моём терминале?",
@@ -50,7 +50,7 @@ def get_settings_keyboard():
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(
         types.InlineKeyboardButton("🗣 Говорить свои фразы", callback_data="mode_own"),
-        types.InlineKeyboardButton("🔄 Повторять чужие фразы", callback_data="mode_echo"),
+        types.InlineKeyboardButton("🔄 Повторять чужие фразы (Эхо)", callback_data="mode_echo"),
         types.InlineKeyboardButton("🔀 И то и то (Микс + Память)", callback_data="mode_mix")
     )
     return markup
@@ -62,15 +62,14 @@ def send_welcome(message):
     
     mode_names = {
         'own': '🗣 Говорить свои фразы',
-        'echo': '🔄 Повторять чужие фразы',
+        'echo': '🔄 Повторять чужие фразы (Эхо)',
         'mix': '🔀 И то и то (Микс + Память)'
     }
     
     welcome_text = (
         f"🤖 **Топякский ИИ** на связи.\n"
         f"Текущий режим: *{mode_names.get(current_mode, 'Свои фразы')}*\n\n"
-        f"🧠 Память чата активирована: я запоминаю твои фразы и могу отвечать ими из архива!\n\n"
-        f"Жми кнопку ниже для смены режима:"
+        f"Выбирай режим работы кнопкой ниже:"
     )
     bot.send_message(chat_id, welcome_text, reply_markup=get_settings_keyboard(), parse_mode='Markdown')
 
@@ -83,7 +82,7 @@ def handle_mode_callback(call):
     
     mode_titles = {
         'own': '🗣 Говорить свои фразы',
-        'echo': '🔄 Повторять чужие фразы',
+        'echo': '🔄 Повторять чужие фразы (Эхо)',
         'mix': '🔀 И то и то (Микс + Память)'
     }
     
@@ -102,36 +101,32 @@ def handle_all_messages(message):
     chat_id = message.chat.id
     text = message.text
     
-    # 1. Инициализируем режим по умолчанию, если нет
+    # 1. Режим по умолчанию
     if chat_id not in user_modes:
         user_modes[chat_id] = 'own'
 
-    # 2. Сохраняем фразу пользователя в память чата (историю)
+    # 2. Сохраняем фразу в память чата (историю) для режима Микс
     if chat_id not in user_history:
         user_history[chat_id] = []
     
-    # Добавляем фразу, если её нет в истории (чтобы не было дубликатов подряд)
     if text not in user_history[chat_id]:
         user_history[chat_id].append(text)
-        # Ограничим память последними 100 фразами, чтобы не перегружать память
         if len(user_history[chat_id]) > 100:
             user_history[chat_id].pop(0)
 
     mode = user_modes[chat_id]
     text_lower = text.lower()
     
-    # 3. Логика генерации ответа
+    # 3. Четкое разделение логики по режимам (никаких лишних срабатываний)
     if mode == 'echo':
-        # Чистое эхо — всегда повторяет текущее сообщение
+        # СТРОГОЕ ЭХО: бот отвечает ровно тем текстом, который прислал пользователь, и больше ничем
         response = text
         
     elif mode == 'own':
-        # Свои фразы + иногда может вспомнить старую фразу из истории (если она там есть)
-        if user_history[chat_id] and len(user_history[chat_id]) > 3 and random.random() < 0.25:
-            # 25% шанс вытащить что-то из архива памяти
+        # ТОЛЬКО СВОИ ФРАЗЫ: бот отвечает фразами из своей базы (иногда вспоминает историю)
+        if user_history[chat_id] and len(user_history[chat_id]) > 3 and random.random() < 0.2:
             response = random.choice(user_history[chat_id])
         else:
-            # Обычные умные ответы
             if any(word in text_lower for word in ['привет', 'здарова', 'ку', 'здаров', 'хай', 'дороу']):
                 response = random.choice(GREETINGS)
             elif any(word in text_lower for word in ['код', 'питон', 'скрипт', 'ошибка', 'баг', 'сервер', 'гитхаб']):
@@ -144,7 +139,7 @@ def handle_all_messages(message):
                 response = random.choice(ALL_PHRASES)
                 
     elif mode == 'mix':
-        # Режим Микс: выбирает либо текущее сообщение, либо рандомную фразу из базы, либо фразу из истории памяти чата
+        # МИКС: рандомно выбирает: повторить текущий текст, достать из архива истории или взять фразу из базы
         choice_pool = ['current', 'base']
         if user_history[chat_id]:
             choice_pool.append('history')
@@ -165,4 +160,4 @@ def handle_all_messages(message):
 if __name__ == '__main__':
     print("Бот запущен и готов к работе...")
     bot.infinity_polling(timeout=60, long_polling_timeout=60)
-                                                     
+    
