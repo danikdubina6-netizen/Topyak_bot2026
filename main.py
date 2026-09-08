@@ -1,7 +1,9 @@
 import os
 import random
+import threading
 import requests
 import telebot
+from flask import Flask
 from telebot import types
 from telebot.types import ReactionTypeEmoji
 
@@ -13,6 +15,17 @@ GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
 REPO_NAME = os.getenv('REPO_NAME')
 
 bot = telebot.TeleBot(TOKEN)
+
+# Поднимаем мини-сервер для UptimeRobot, чтобы раннер не спал
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Topyak Bot is alive and running!"
+
+def run_web_server():
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
 
 BOT_ID = None
 try:
@@ -58,7 +71,7 @@ def send_welcome(message):
     welcome_text = (
         f"🤖 **Топякский ИИ** на связи.\n"
         f"Текущий режим: *{mode_names.get(current_mode, 'Точечные ответы')}*\n\n"
-        f"Умный подбор ответов активирован!"
+        f"UptimeRobot мониторинг активен!"
     )
     bot.send_message(chat_id, welcome_text, reply_markup=get_settings_keyboard(chat_id), parse_mode='Markdown')
 
@@ -136,6 +149,11 @@ def handle_all_messages(message):
     if not text:
         return
 
+    # Фильтруем очевидный спам и рекламу (например, ботов для пробива)
+    text_lower = text.lower()
+    if any(spam_word in text_lower for spam_word in ['пробив', 'телефон, фио', 'госномер', 'поиск человека по фото', 'попробуйте бесплатно']):
+        return
+
     if chat_id in active_games:
         if text.lower().strip() == active_games[chat_id]:
             bot.reply_to(message, "🎉 Красава! Ты абсолютно прав, ответ засчитан!")
@@ -199,17 +217,12 @@ def handle_all_messages(message):
         response = random.choice(pool)
         
     else:
-        # Умный анализ текста и выбор категории вместо слепого рандома
-        text_lower = text.lower()
-        
-        # Ключевые слова для категорий
         greetings_keys = ['привет', 'здарова', 'ку', 'здаров', 'хай', 'дороу', 'салам', 'добрый', 'алло']
         tech_keys = ['код', 'питон', 'скрипт', 'ошибка', 'баг', 'сервер', 'гитхаб', 'раннер', 'деплой', 'проект', 'файл', 'ошибк', 'тест']
         vibe_keys = ['музыка', 'трек', 'вайб', 'космос', 'жизнь', 'капкут', 'песня', 'звук', 'мелодия', 'рок', 'хит', 'наушник']
         toxic_keys = ['дурак', 'тупой', 'кринж', 'бот', 'сука', 'блять', 'душно', 'уголовка', 'бесишь', 'тупишь', 'задолбал']
         smart_keys = ['почему', 'зачем', 'как', 'что', 'смысл', 'логика', 'ум', 'идея', 'задача', 'думай']
 
-        # Подсчет совпадений по ключевым словам для точного попадания
         scores = {
             "greetings": sum(1 for w in greetings_keys if w in text_lower),
             "tech": sum(1 for w in tech_keys if w in text_lower),
@@ -220,7 +233,6 @@ def handle_all_messages(message):
 
         best_category = max(scores, key=scores.get)
 
-        # Если ни одно ключевое слово не найдено явным образом, выбираем smart или по смыслу вопроса
         if scores[best_category] == 0:
             if '?' in text:
                 response = random.choice(SMART_DATABASE["smart"])
@@ -240,6 +252,11 @@ def update_history(chat_id, text):
             user_history[chat_id].pop(0)
 
 if __name__ == '__main__':
-    print("Бот запущен с умным подбором ответов...")
+    # Запускаем Flask в фоновом потоке
+    server_thread = threading.Thread(target=run_web_server)
+    server_thread.daemon = True
+    server_thread.start()
+    
+    print("Бот и локальный веб-сервер запущены...")
     bot.infinity_polling(skip_pending=True, timeout=60, long_polling_timeout=60)
-        
+    
