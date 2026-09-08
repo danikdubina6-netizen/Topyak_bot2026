@@ -1,39 +1,15 @@
 import os
 import random
-import threading
-import requests
-from flask import Flask
 import telebot
 
-# Инициализация Flask-сервера для пингов от UptimeRobot
-app = Flask(__name__)
-
-
-@app.route("/")
-def index():
-    return "Topyak Bot is alive and running 24/7!"
-
-
-def run_flask():
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
-
-
-# Запуск Flask в отдельном потоке, чтобы не блокировать бота
-flask_thread = threading.Thread(target=run_flask)
-flask_thread.daemon = True
-flask_thread.start()
-
-# Читаем токен из переменных окружения Render
+# Читаем токен из Secret на GitHub
 TOKEN = os.environ.get("TOKEN")
 if not TOKEN:
-    raise ValueError(
-        "Не задан TOKEN бота в переменных окружения Render!"
-    )
+    raise ValueError("Не задан TOKEN бота в Secrets GitHub!")
 
 bot = telebot.TeleBot(TOKEN)
 
-# --- ЕДИНАЯ ЧИСТАЯ БАЗА ФРАЗ (БЕЗ ВСЯКИХ ТЕХНИЧЕСКИХ ВАРИАНТОВ) ---
+# ЕДИНАЯ ЧИСТАЯ БАЗА ФРАЗ
 SMART_DATABASE = {
     "greetings": [
         "Здарова, легенда. Какими судьбами в терминале?",
@@ -170,7 +146,6 @@ AVAILABLE_REACTIONS = [
     "🥱",
 ]
 
-# Ключевые слова для умного выбора категории
 KEYWORDS = {
     "tech": [
         "код",
@@ -212,7 +187,6 @@ KEYWORDS = {
         "херня",
         "отстой",
         "блять",
-        "блять",
     ],
     "smart": [
         "ум",
@@ -221,7 +195,7 @@ KEYWORDS = {
         "мысль",
         "логик",
         "почему",
-        длб,
+        "длб",
         "зачем",
         "анализ",
         "мудрость",
@@ -232,7 +206,7 @@ KEYWORDS = {
 
 def get_smart_reply(text):
     text_lower = text.lower()
-    selected_category = "greetings"  по умолчанию
+    selected_category = "greetings"
 
     for cat, words in KEYWORDS.items():
         if any(word in text_lower for word in words):
@@ -242,12 +216,11 @@ def get_smart_reply(text):
     return random.choice(SMART_DATABASE[selected_category])
 
 
-# Обработка входящих текстовых сообщений
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
     text = message.text
 
-    # Проверка на спам-рекламу (фильтруем ботов-пробивов и промо)
+    # Фильтр спама
     spam_words = [
         "пробив",
         "госномер",
@@ -263,11 +236,9 @@ def handle_message(message):
             pass
         return
 
-    # Отправляем нормальный живой ответ
     reply_text = get_smart_reply(text)
     sent_msg = bot.reply_to(message, reply_text)
 
-    # Ставим рандомную реакцию
     try:
         reaction = random.choice(AVAILABLE_REACTIONS)
         bot.set_message_reaction(
@@ -280,5 +251,6 @@ def handle_message(message):
 
 
 if __name__ == "__main__":
-    print("Бот запущен в режиме 24/7...")
+    print("Бот запущен на GitHub Actions...")
     bot.infinity_polling()
+    
