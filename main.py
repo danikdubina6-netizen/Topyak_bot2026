@@ -1,112 +1,95 @@
 import os
 import random
-import threading
+import requests
 import telebot
 from telebot import types
 from telebot.types import ReactionTypeEmoji
 
+# Импортируем базу из phrases.py
+from phrases import SMART_DATABASE, ALL_BASE_PHRASES, AVAILABLE_REACTIONS, QUIZ_QUESTIONS
+
 TOKEN = os.getenv('TOKEN')
+GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
+REPO_NAME = os.getenv('REPO_NAME')
+
 bot = telebot.TeleBot(TOKEN)
 
-# Получаем ID самого бота при старте
 BOT_ID = None
 try:
     BOT_ID = bot.get_me().id
 except Exception:
     pass
 
-# Хранилища состояний, памяти и счетчиков
-user_modes = {}       # Режимы работы (own, echo, mix) для чатов
-user_history = {}     # Память: история фраз
-message_counters = {} # Счетчик обычных сообщений для лимита в 15 штук
-active_games = {}     # Активные мини-игры в чатах
+user_modes = {}       
+user_history = {}     
+message_counters = {} 
+active_games = {}     
 
-# База фраз бота
-GREETINGS = [
-    "О, живой человек в терминале. Говори, чё хотел.",
-    "О, здарова. Какими судьбами в моём терминале?",
-    "Здорово, программист. Какую фичу сегодня ломаем?",
-    "Привет. Опять ты со своими гениальными идеями."
-]
-
-SMART_RESPONSES = [
-    "Интересный тейк, но давай ближе к делу, кожаный.",
-    "Не душни, давай по фактам или никак.",
-    "Загрузил процессор своими мыслями. Пойду остыну."
-]
-
-TOXIC_ROASTS = [
-    "Ошибка 404: уважение к собеседнику не найдено.",
-    "Бот написан на коленке, но работает стабильнее твоей личной жизни.",
-    "Кринг.",
-    "Имба лютая."
-]
-
-TECH_QUOTES = [
-    "Работает — не трогай. Золотое правило системного администратора.",
-    "Костыли — это фундамент любого великого проекта.",
-    "GitHub Actions — великая вещь, пока раннеры не начинают бунтовать."
-]
-
-VIBE_QUOTES = [
-    "Синтезаторы, драм-машины и холодный свет монитора — вот это вайб.",
-    "Жизнь — это трек в КапКуте: обрезал лишнее, наложил фильтр, погнали дальше.",
-    "Космос молчит, а наш бот отвечает. Идеальный баланс."
-]
-
-ALL_BASE_PHRASES = GREETINGS + SMART_RESPONSES + TOXIC_ROASTS + TECH_QUOTES + VIBE_QUOTES
-
-# Набор реакций для авто-реакций (Фича №1)
-AVAILABLE_REACTIONS = ["🔥", "👍", "👎", "💩", "😱", "🕊", "🤡", "⚡️", "🌚"]
-
-# База для мини-игры "Угадай песню/цитату" (Фича №4)
-QUIZ_QUESTIONS = [
-    {"question": "Какая группа исполняет бессмертный хит про «Группу крови на рукаве»?", "answer": "кино"},
-    {"question": "В каком приложении на ПК создаются лучшие треки дома?", "answer": "капкут"},
-    {"question": "Что великое и беспощадное иногда бунтует в GitHub?", "answer": "раннеры"},
-    {"question": "Какая оценка IQ идеально подходит кодеку Топяка?", "answer": "140"}
-]
-
-# Клавиатура с выбором режимов
 def get_settings_keyboard(chat_id):
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(
-        types.InlineKeyboardButton("🗣 Говорить свои фразы (база бота)", callback_data="mode_own"),
-        types.InlineKeyboardButton("🔄 Повторять чужие фразы (из истории)", callback_data="mode_echo"),
-        types.InlineKeyboardButton("🔀 И то и то (Микс вариантов)", callback_data="mode_mix"),
-        types.InlineKeyboardButton("🎮 Сыграть в угадайку", callback_data="start_quiz")
+        types.InlineKeyboardButton("🗣 Точечные ответы базы", callback_data="mode_own"),
+        types.InlineKeyboardButton("🔄 Повторять чужие фразы", callback_data="mode_echo"),
+        types.InlineKeyboardButton("🔀 Микс вариантов", callback_data="mode_mix"),
+        types.InlineKeyboardButton("🎮 Сыграть в угадайку", callback_data="start_quiz"),
+        types.InlineKeyboardButton("🔄 Перезапустить бота (GitHub)", callback_data="trigger_reboot")
     )
     return markup
 
-@bot.message_handler(commands=['start', 'help', 'mode', 'quiz'])
+@bot.message_handler(commands=['start', 'help', 'mode', 'quiz', 'reboot'])
 def send_welcome(message):
     chat_id = message.chat.id
-    current_mode = user_modes.get(chat_id, 'own')
     
     if message.text.startswith('/quiz'):
         start_quiz_game(message)
         return
-    
+        
+    if message.text.startswith('/reboot'):
+        trigger_github_workflow(message)
+        return
+
+    current_mode = user_modes.get(chat_id, 'own')
     mode_names = {
-        'own': '🗣 Говорить свои фразы',
-        'echo': '🔄 Повторять чужие фразы (из истории)',
-        'mix': '🔀 И то и то (Микс)'
+        'own': '🗣 Точечные ответы базы',
+        'echo': '🔄 Повторять чужие фразы',
+        'mix': '🔀 Микс вариантов'
     }
     
     welcome_text = (
         f"🤖 **Топякский ИИ** на связи.\n"
-        f"Текущий режим: *{mode_names.get(current_mode, 'Свои фразы')}*\n\n"
-        f"Настрой бота кнопками ниже или запусти игру:"
+        f"Текущий режим: *{mode_names.get(current_mode, 'Точечные ответы')}*\n\n"
+        f"Умный подбор ответов активирован!"
     )
     bot.send_message(chat_id, welcome_text, reply_markup=get_settings_keyboard(chat_id), parse_mode='Markdown')
+
+def trigger_github_workflow(message):
+    chat_id = message.chat.id
+    if not GITHUB_TOKEN or not REPO_NAME:
+        bot.reply_to(message, "⚠️ Ошибка: На GitHub не прописаны секреты GITHUB_TOKEN или REPO_NAME!")
+        return
+
+    url = f"https://api.github.com/repos/{REPO_NAME}/actions/workflows/bot.yml/dispatches"
+    headers = {
+        "Authorization": f"Bearer {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github+json"
+    }
+    data = {"ref": "main"}
+
+    try:
+        response = requests.post(url, json=data, headers=headers)
+        if response.status_code == 204:
+            bot.reply_to(message, "🚀 Сигнал отправлен! GitHub Actions перезапускает раннер...")
+        else:
+            bot.reply_to(message, f"❌ Ошибка вызова GitHub API: статус {response.status_code}")
+    except Exception as e:
+        bot.reply_to(message, f"❌ Не удалось отправить запрос: {e}")
 
 def start_quiz_game(message):
     chat_id = message.chat.id
     q = random.choice(QUIZ_QUESTIONS)
     active_games[chat_id] = q['answer'].lower()
-    bot.send_message(chat_id, f"🎮 **Мини-игра Угадайка за запущена!**\n\nВопрос: *{q['question']}*\n\nНапиши ответ прямо в чат!")
+    bot.send_message(chat_id, f"🎮 **Мини-игра Угадайка запущена!**\n\nВопрос: *{q['question']}*\n\nНапиши ответ прямо в чат!")
 
-# Обработка нажатий на инлайн-кнопки
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
     chat_id = call.message.chat.id
@@ -115,12 +98,12 @@ def handle_callbacks(call):
     if data.startswith('mode_'):
         new_mode = data.split('_')[1]
         user_modes[chat_id] = new_mode
-        bot.answer_callback_query(call.id, "Режим успешно изменен!")
+        bot.answer_callback_query(call.id, "Режим изменен!")
         
         mode_titles = {
-            'own': '🗣 Говорить свои фразы',
-            'echo': '🔄 Повторять чужие фразы (из истории)',
-            'mix': '🔀 И то и то (Микс)'
+            'own': '🗣 Точечные ответы базы',
+            'echo': '🔄 Повторять чужие фразы',
+            'mix': '🔀 Микс вариантов'
         }
         bot.edit_message_text(
             chat_id=chat_id,
@@ -132,8 +115,10 @@ def handle_callbacks(call):
     elif data == 'start_quiz':
         bot.answer_callback_query(call.id, "Игра началась!")
         start_quiz_game(call.message)
+    elif data == 'trigger_reboot':
+        bot.answer_callback_query(call.id, "Запуск рестарта...")
+        trigger_github_workflow(call.message)
 
-# Обработчик всех текстовых сообщений
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_all_messages(message):
     global BOT_ID
@@ -151,14 +136,12 @@ def handle_all_messages(message):
     if not text:
         return
 
-    # Проверка ответов на мини-игру (Фича №4)
     if chat_id in active_games:
         if text.lower().strip() == active_games[chat_id]:
             bot.reply_to(message, "🎉 Красава! Ты абсолютно прав, ответ засчитан!")
             del active_games[chat_id]
             return
 
-    # Проверяем, ответили ли на сообщение бота или затегали его
     is_replied_to_bot = (
         message.reply_to_message 
         and message.reply_to_message.from_user 
@@ -187,7 +170,6 @@ def handle_all_messages(message):
             return
         else:
             message_counters[chat_id] = 0
-            # ФИЧА №1: Вместо ответа текстом бот может молча поставить реакцию на сообщение!
             if random.choice([True, False]):
                 try:
                     chosen_emoji = random.choice(AVAILABLE_REACTIONS)
@@ -217,17 +199,35 @@ def handle_all_messages(message):
         response = random.choice(pool)
         
     else:
+        # Умный анализ текста и выбор категории вместо слепого рандома
         text_lower = text.lower()
-        if any(word in text_lower for word in ['привет', 'здарова', 'ку', 'здаров', 'хай', 'дороу']):
-            response = random.choice(GREETINGS)
-        elif any(word in text_lower for word in ['код', 'питон', 'скрипт', 'ошибка', 'баг', 'сервер', 'гитхаб']):
-            response = random.choice(TECH_QUOTES)
-        elif any(word in text_lower for word in ['музыка', 'трек', 'вайб', 'космос', 'жизнь', 'капкут']):
-            response = random.choice(VIBE_QUOTES)
-        elif any(word in text_lower for word in ['дурак', 'тупой', 'кринж', 'бот', 'сука', 'блять']):
-            response = random.choice(TOXIC_ROASTS)
+        
+        # Ключевые слова для категорий
+        greetings_keys = ['привет', 'здарова', 'ку', 'здаров', 'хай', 'дороу', 'салам', 'добрый', 'алло']
+        tech_keys = ['код', 'питон', 'скрипт', 'ошибка', 'баг', 'сервер', 'гитхаб', 'раннер', 'деплой', 'проект', 'файл', 'ошибк', 'тест']
+        vibe_keys = ['музыка', 'трек', 'вайб', 'космос', 'жизнь', 'капкут', 'песня', 'звук', 'мелодия', 'рок', 'хит', 'наушник']
+        toxic_keys = ['дурак', 'тупой', 'кринж', 'бот', 'сука', 'блять', 'душно', 'уголовка', 'бесишь', 'тупишь', 'задолбал']
+        smart_keys = ['почему', 'зачем', 'как', 'что', 'смысл', 'логика', 'ум', 'идея', 'задача', 'думай']
+
+        # Подсчет совпадений по ключевым словам для точного попадания
+        scores = {
+            "greetings": sum(1 for w in greetings_keys if w in text_lower),
+            "tech": sum(1 for w in tech_keys if w in text_lower),
+            "vibe": sum(1 for w in vibe_keys if w in text_lower),
+            "toxic": sum(1 for w in toxic_keys if w in text_lower),
+            "smart": sum(1 for w in smart_keys if w in text_lower)
+        }
+
+        best_category = max(scores, key=scores.get)
+
+        # Если ни одно ключевое слово не найдено явным образом, выбираем smart или по смыслу вопроса
+        if scores[best_category] == 0:
+            if '?' in text:
+                response = random.choice(SMART_DATABASE["smart"])
+            else:
+                response = random.choice(SMART_DATABASE["tech"] + SMART_DATABASE["vibe"])
         else:
-            response = random.choice(ALL_BASE_PHRASES)
+            response = random.choice(SMART_DATABASE[best_category])
 
     bot.reply_to(message, response)
 
@@ -240,6 +240,6 @@ def update_history(chat_id, text):
             user_history[chat_id].pop(0)
 
 if __name__ == '__main__':
-    print("Бот запущен с авто-реакциями и угадайкой...")
+    print("Бот запущен с умным подбором ответов...")
     bot.infinity_polling(skip_pending=True, timeout=60, long_polling_timeout=60)
-                     
+        
