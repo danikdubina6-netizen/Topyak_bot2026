@@ -206,12 +206,17 @@ KEYWORDS = {
 
 def get_smart_reply(text):
     text_lower = text.lower()
-    selected_category = "greetings"
+    selected_category = None
 
+    # Ищем категорию по ключевым словам
     for cat, words in KEYWORDS.items():
         if any(word in text_lower for word in words):
             selected_category = cat
             break
+
+    # Если ключевое слово не найдено — берем рандомную категорию со всеми темами
+    if not selected_category:
+        selected_category = random.choice(list(SMART_DATABASE.keys()))
 
     return random.choice(SMART_DATABASE[selected_category])
 
