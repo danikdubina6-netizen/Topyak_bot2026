@@ -5,10 +5,9 @@ import telebot
 from collections import defaultdict
 
 TOKEN = "8888128306:AAGDA3JJZx5_KCsku2FH-gDRIZ1o1l0grf4"
-BOT_USERNAME = "@assistantasil_bot"  # Указали юзернейм бота явно
+BOT_USERNAME = "assistantasil_bot"  # без @ для надежной проверки entity
 
 bot = telebot.TeleBot(TOKEN)
-
 message_counters = defaultdict(int)
 
 PHRASES = {
@@ -178,6 +177,9 @@ def get_random_phrase():
 
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
+    # Логируем в консоль каждое пойманное сообщение (проверим, видит ли бот чат вообще)
+    print(f"[LOG] Чат: {message.chat.id} ({message.chat.type}) | От: {message.from_user.first_name} | Текст: {message.text}")
+
     if message.from_user.is_bot or message.from_user.id == bot.get_me().id:
         return
 
@@ -198,46 +200,48 @@ def handle_message(message):
     if chat_type == 'private':
         try:
             bot.send_message(message.chat.id, get_random_phrase())
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[ERROR] Ошибка отправки в ЛС: {e}")
         return
 
     # Проверяем упоминание или реплай в группах
     is_mentioned = False
     
-    # Проверка реплая на сообщение бота
+    # 1. Проверка реплая на сообщение бота
     if message.reply_to_message and message.reply_to_message.from_user.id == bot.get_me().id:
         is_mentioned = True
         
-    # Проверка упоминания по юзернейму @Assistantasil_bot или через entity (упоминания телеграма)
+    # 2. Проверка упоминания через text или entities
     if BOT_USERNAME in text.lower():
         is_mentioned = True
     elif message.entities:
         for entity in message.entities:
             if entity.type == "mention":
                 mention_text = text[entity.offset:entity.offset + entity.length].lower()
-                if mention_text == BOT_USERNAME:
+                if BOT_USERNAME in mention_text:
                     is_mentioned = True
                     break
 
-    # Если упомянули через @Assistantasil_bot или ответили на сообщение — отвечаем сразу
+    # Если упомянули или ответили — отвечаем СРАЗУ
     if is_mentioned:
+        print(f"[ACTION] Сработал триггер упоминания/реплая в чате {message.chat.id}")
         try:
             bot.reply_to(message, get_random_phrase())
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[ERROR] Ошибка ответа на упоминание: {e}")
         return
 
-    # В группах (обычные сообщения) — копим счетчик до 15 сообщений
+    # В группах — обычный счетчик до 15 сообщений
     chat_id = message.chat.id
     message_counters[chat_id] += 1
+    print(f"[COUNTER] Чат {chat_id}: сообщение {message_counters[chat_id]}/15")
 
     if message_counters[chat_id] < 15:
         return
 
     message_counters[chat_id] = 0
 
-    # Раз в 15 сообщений рандомно: либо реакция, либо текст
+    # Раз в 15 сообщений
     action_type = random.choice(["reaction", "text"])
     if action_type == "reaction":
         try:
@@ -247,7 +251,9 @@ def handle_message(message):
                 message.id,
                 [telebot.types.ReactionTypeEmoji(reaction)]
             )
-        except Exception:
+            print(f"[ACTION] Поставлена реакция {reaction}")
+        except Exception as e:
+            print(f"[ERROR] Не удалось поставить реакцию, шлем текст: {e}")
             try:
                 bot.send_message(message.chat.id, get_random_phrase())
             except Exception:
@@ -255,20 +261,16 @@ def handle_message(message):
     else:
         try:
             bot.send_message(message.chat.id, get_random_phrase())
-        except Exception:
-            pass
+            print(f"[ACTION] Отправлено плановое сообщение")
+        except Exception as e:
+            print(f"[ERROR] Ошибка планового сообщения: {e}")
 
 if __name__ == "__main__":
-    print("Бот запущен с поддержкой @Assistantasil_bot!")
-    
-    start_time = time.time()
+    print("Бот запущен и готов к работе...")
     while True:
         try:
-            if time.time() - start_time > (5 * 3600 + 40 * 60):
-                print("Мягкий перезапуск сеанса...")
-                break
             bot.polling(none_stop=True, interval=0, timeout=20)
         except Exception as e:
-            print(f"Ошибка соединения: {e}")
+            print(f"[CRITICAL] Ошибка polling: {e}")
             time.sleep(5)
-            
+    
