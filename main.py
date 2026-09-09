@@ -7,7 +7,6 @@ from collections import defaultdict
 TOKEN = "8888128306:AAGDA3JJZx5_KCsku2FH-gDRIZ1o1l0grf4"
 bot = telebot.TeleBot(TOKEN)
 
-# Счетчик для групповых чатов
 message_counters = defaultdict(int)
 
 PHRASES = {
@@ -110,8 +109,17 @@ AVAILABLE_REACTIONS = [
     "😢", "🎉", "🤩", "🤮", "💩", "🙏", "👌", "🕊", "🤡", "🥱"
 ]
 
-def process_bot_action(message):
-    """Общая логика ответа или реакции"""
+def send_text_reply(message):
+    """Отправляет текстовый ответ"""
+    try:
+        category = random.choice(list(PHRASES.keys()))
+        reply_text = random.choice(PHRASES[category])
+        bot.reply_to(message, reply_text)
+    except Exception:
+        pass
+
+def process_group_action(message):
+    """В группах рандомно: либо реакция, либо текст"""
     action_type = random.choice(["reaction", "text"])
     if action_type == "reaction":
         try:
@@ -122,14 +130,9 @@ def process_bot_action(message):
                 [telebot.types.ReactionTypeEmoji(reaction)]
             )
         except Exception:
-            pass
+            send_text_reply(message) # Если реакция не прошла, кидаем текст
     else:
-        try:
-            category = random.choice(list(PHRASES.keys()))
-            reply_text = random.choice(PHRASES[category])
-            bot.reply_to(message, reply_text)
-        except Exception:
-            pass
+        send_text_reply(message)
 
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
@@ -149,24 +152,23 @@ def handle_message(message):
 
     chat_type = message.chat.type  # 'private', 'group', 'supergroup'
 
-    # Если это личные сообщения (ЛС) — отвечаем сразу на каждое сообщение без ограничений
+    # В ЛС отвечаем текстом на КАЖДОЕ сообщение без задержек и реакций
     if chat_type == 'private':
-        process_bot_action(message)
+        send_text_reply(message)
         return
 
-    # Если это группы или супергруппы — включаем счетчик на 15 сообщений
+    # В группах — счетчик на 15 сообщений и рандом (реакция или текст)
     chat_id = message.chat.id
     message_counters[chat_id] += 1
 
     if message_counters[chat_id] < 15:
         return
 
-    # Наступило 15-е сообщение в группе
     message_counters[chat_id] = 0
-    process_bot_action(message)
+    process_group_action(message)
 
 if __name__ == "__main__":
-    print("Бот запущен: в ЛС без лимитов, в группах каждые 15 сообщений...")
+    print("Бот настроен: в ЛС текст на каждое сообщение, в группах — по 15 сообщений.")
     
     start_time = time.time()
     while True:
@@ -178,4 +180,3 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"Ошибка соединения: {e}")
             time.sleep(5)
-            
