@@ -1,9 +1,13 @@
 import os
 import random
 import telebot
+from collections import defaultdict
 
 TOKEN = "8888128306:AAGDA3JJZx5_KCsku2FH-gDRIZ1o1l0grf4"
 bot = telebot.TeleBot(TOKEN)
+
+# Словарь для точного подсчета сообщений в каждом чате
+message_counters = defaultdict(int)
 
 # Твоя база фраз
 PHRASES = {
@@ -222,20 +226,15 @@ AVAILABLE_REACTIONS = [
     "😢", "🎉", "🤩", "🤮", "💩", "🙏", "👌", "🕊", "🤡", "🥱"
 ]
 
-# Глобальный счетчик сообщений
-message_counter = 0
-
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
-    global message_counter
-
     # Игнорируем ботов и самих себя
     if message.from_user.is_bot or message.from_user.id == bot.get_me().id:
         return
 
     text = message.text or ""
 
-    # Фильтр спама — удаляем сразу, счетчик сообщений для них не крутим
+    # Фильтр спама — удаляем сразу, счетчик сообщений для него не крутим
     spam_words = ["пробив", "госномер", "поиск человека", "бесплатно", "vpn", "впн"]
     if any(word in text.lower() for word in spam_words):
         try:
@@ -244,17 +243,19 @@ def handle_message(message):
             pass
         return
 
-    # Считаем только реальные сообщения от людей
-    message_counter += 1
+    chat_id = message.chat.id
 
-    # Пока не набралось 15 сообщений — бот вообще молчит и не отсвечивает
-    if message_counter < 15:
+    # Увеличиваем счетчик сообщений для этого чата
+    message_counters[chat_id] += 1
+
+    # Пока не набралось 15 сообщений — бот полностью молчит (никаких реакций и текста)
+    if message_counters[chat_id] < 15:
         return
 
-    # Как только наступило 15-е сообщение — сбрасываем счетчик
-    message_counter = 0
+    # Как только наступило 15-е сообщение — сбрасываем счетчик на 0 и запускаем цикл заново
+    message_counters[chat_id] = 0
 
-    # Выбираем случайным образом: либо поставить реакцию (50% шанс), либо ответить текстом (50% шанс)
+    # Выбираем случайное действие ровно для 15-го сообщения: либо реакция, либо текст
     action_type = random.choice(["reaction", "text"])
 
     if action_type == "reaction":
@@ -276,6 +277,6 @@ def handle_message(message):
             pass
 
 if __name__ == "__main__":
-    print("Топякский бот перешел в ультра-скрытный режим (1 сообщение из 15)...")
+    print("Топякский бот запущен в режиме жесткого контроля частоты...")
     bot.infinity_polling()
     
