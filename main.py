@@ -5,7 +5,7 @@ import telebot
 from collections import defaultdict
 
 TOKEN = "8888128306:AAGDA3JJZx5_KCsku2FH-gDRIZ1o1l0grf4"
-BOT_USERNAME = "assistantasil_bot"  # без @ для надежной проверки entity
+BOT_USERNAME = "assistantasil_bot"
 
 bot = telebot.TeleBot(TOKEN)
 message_counters = defaultdict(int)
@@ -177,11 +177,10 @@ def get_random_phrase():
 
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
-    # Логируем в консоль каждое пойманное сообщение (проверим, видит ли бот чат вообще)
     print(f"[LOG] Чат: {message.chat.id} ({message.chat.type}) | От: {message.from_user.first_name} | Текст: {message.text}")
 
-    if message.from_user.is_bot or message.from_user.id == bot.get_me().id:
-        return
+    if message.from_user.is_bot and message.from_user.id != bot.get_me().id:
+        return  # игнорируем других ботов, но не себя
 
     text = message.text or ""
 
@@ -196,45 +195,52 @@ def handle_message(message):
 
     chat_type = message.chat.type  # 'private', 'group', 'supergroup'
 
-    # В ЛС: строго отправляем текст на КАЖДОЕ входящее без реакций
+    # В ЛС: строго отвечаем на каждое сообщение
     if chat_type == 'private':
         try:
             bot.send_message(message.chat.id, get_random_phrase())
         except Exception as e:
-            print(f"[ERROR] Ошибка отправки в ЛС: {e}")
+            print(f"[ERROR] ЛС: {e}")
         return
 
-    # Проверяем упоминание или реплай в группах
-    is_mentioned = False
-    
-    # 1. Проверка реплая на сообщение бота
-    if message.reply_to_message and message.reply_to_message.from_user.id == bot.get_me().id:
-        is_mentioned = True
-        
-    # 2. Проверка упоминания через text или entities
+    # Же железобетонная проверка: упоминают ли бота ИЛИ делают ли реплай на сообщение бота
+    is_triggered = False
+
+    # 1. Проверяем текст на наличие юзернейма
     if BOT_USERNAME in text.lower():
-        is_mentioned = True
-    elif message.entities:
+        is_triggered = True
+
+    # 2. Проверяем Telegram entities (кликабельные упоминания)
+    if message.entities:
         for entity in message.entities:
             if entity.type == "mention":
                 mention_text = text[entity.offset:entity.offset + entity.length].lower()
                 if BOT_USERNAME in mention_text:
-                    is_mentioned = True
+                    is_triggered = True
                     break
 
-    # Если упомянули или ответили — отвечаем СРАЗУ
-    if is_mentioned:
-        print(f"[ACTION] Сработал триггер упоминания/реплая в чате {message.chat.id}")
+    # 3. Проверяем реплай (если отвечают на сообщение нашего бота)
+    if message.reply_to_message:
+        replied = message.reply_to_message
+        # Если автор исходного сообщения — наш бот, или в тексте исходного сообщения есть имя/тег нашего бота
+        if replied.from_user and replied.from_user.id == bot.get_me().id:
+            is_triggered = True
+        elif replied.text and (BOT_USERNAME in replied.text.lower() or "топякский ии" in replied.text.lower()):
+            is_triggered = True
+
+    # Если сработал любой триггер упоминания или реплая — отвечаем моментально
+    if is_triggered:
+        print(f"[ACTION] Сработал триггер (реплай/упоминание) в чате {message.chat.id}")
         try:
             bot.reply_to(message, get_random_phrase())
         except Exception as e:
-            print(f"[ERROR] Ошибка ответа на упоминание: {e}")
+            print(f"[ERROR] Не удалось ответить на реплай: {e}")
         return
 
-    # В группах — обычный счетчик до 15 сообщений
+    # В группах (обычные сообщения) — копим счетчик до 15
     chat_id = message.chat.id
     message_counters[chat_id] += 1
-    print(f"[COUNTER] Чат {chat_id}: сообщение {message_counters[chat_id]}/15")
+    print(f"[COUNTER] Чат {chat_id}: {message_counters[chat_id]}/15")
 
     if message_counters[chat_id] < 15:
         return
@@ -253,7 +259,7 @@ def handle_message(message):
             )
             print(f"[ACTION] Поставлена реакция {reaction}")
         except Exception as e:
-            print(f"[ERROR] Не удалось поставить реакцию, шлем текст: {e}")
+            print(f"[ERROR] Реакция не удалась, шлем текст: {e}")
             try:
                 bot.send_message(message.chat.id, get_random_phrase())
             except Exception:
@@ -266,7 +272,7 @@ def handle_message(message):
             print(f"[ERROR] Ошибка планового сообщения: {e}")
 
 if __name__ == "__main__":
-    print("Бот запущен и готов к работе...")
+    print("Бот запущен с исправленной логикой реплаев...")
     while True:
         try:
             bot.polling(none_stop=True, interval=0, timeout=20)
