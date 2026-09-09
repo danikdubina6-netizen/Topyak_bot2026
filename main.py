@@ -109,30 +109,9 @@ AVAILABLE_REACTIONS = [
     "😢", "🎉", "🤩", "🤮", "💩", "🙏", "👌", "🕊", "🤡", "🥱"
 ]
 
-def send_text_reply(message):
-    """Отправляет текстовый ответ"""
-    try:
-        category = random.choice(list(PHRASES.keys()))
-        reply_text = random.choice(PHRASES[category])
-        bot.reply_to(message, reply_text)
-    except Exception:
-        pass
-
-def process_group_action(message):
-    """В группах рандомно: либо реакция, либо текст"""
-    action_type = random.choice(["reaction", "text"])
-    if action_type == "reaction":
-        try:
-            reaction = random.choice(AVAILABLE_REACTIONS)
-            bot.set_message_reaction(
-                message.chat.id,
-                message.id,
-                [telebot.types.ReactionTypeEmoji(reaction)]
-            )
-        except Exception:
-            send_text_reply(message) # Если реакция не прошла, кидаем текст
-    else:
-        send_text_reply(message)
+def get_random_phrase():
+    category = random.choice(list(PHRASES.keys()))
+    return random.choice(PHRASES[category])
 
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
@@ -152,12 +131,15 @@ def handle_message(message):
 
     chat_type = message.chat.type  # 'private', 'group', 'supergroup'
 
-    # В ЛС отвечаем текстом на КАЖДОЕ сообщение без задержек и реакций
+    # В ЛС: строго отправляем обычное сообщение в ответ на КАЖДОЕ входящее без реакций
     if chat_type == 'private':
-        send_text_reply(message)
+        try:
+            bot.send_message(message.chat.id, get_random_phrase())
+        except Exception:
+            pass
         return
 
-    # В группах — счетчик на 15 сообщений и рандом (реакция или текст)
+    # В группах: копим счетчик до 15 сообщений, затем рандомно либо реакция, либо текст
     chat_id = message.chat.id
     message_counters[chat_id] += 1
 
@@ -165,10 +147,29 @@ def handle_message(message):
         return
 
     message_counters[chat_id] = 0
-    process_group_action(message)
+
+    action_type = random.choice(["reaction", "text"])
+    if action_type == "reaction":
+        try:
+            reaction = random.choice(AVAILABLE_REACTIONS)
+            bot.set_message_reaction(
+                message.chat.id,
+                message.id,
+                [telebot.types.ReactionTypeEmoji(reaction)]
+            )
+        except Exception:
+            try:
+                bot.send_message(message.chat.id, get_random_phrase())
+            except Exception:
+                pass
+    else:
+        try:
+            bot.send_message(message.chat.id, get_random_phrase())
+        except Exception:
+            pass
 
 if __name__ == "__main__":
-    print("Бот настроен: в ЛС текст на каждое сообщение, в группах — по 15 сообщений.")
+    print("Бот запущен: в ЛС шлет текст на каждое сообщение, в группах — раз в 15 сообщений.")
     
     start_time = time.time()
     while True:
@@ -176,7 +177,7 @@ if __name__ == "__main__":
             if time.time() - start_time > (5 * 3600 + 40 * 60):
                 print("Мягкий перезапуск сеанса...")
                 break
-            bot.polling(none_stop=True, interval=1, timeout=20)
+            bot.polling(none_stop=True, interval=0, timeout=20)
         except Exception as e:
             print(f"Ошибка соединения: {e}")
             time.sleep(5)
