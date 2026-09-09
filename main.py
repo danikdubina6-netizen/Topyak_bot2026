@@ -5,7 +5,7 @@ import telebot
 TOKEN = "8888128306:AAGDA3JJZx5_KCsku2FH-gDRIZ1o1l0grf4"
 bot = telebot.TeleBot(TOKEN)
 
-# Огромная база фраз со всеми категориями (включая brand_new на 100+ штук)
+# Твоя база фраз
 PHRASES = {
     "greetings": [
         "Здарова! Готов к великим делам?",
@@ -37,7 +37,6 @@ PHRASES = {
         "Хай! Чат оживает на глазах.",
         "Салам! Какие планы на вечерний деплой?",
         "Приветствую! Я готов к работе."
-        "Здарова братишка, че хотел?"
     ],
     "tech": [
         "Архитектура проекта держится на честном скотче.",
@@ -223,14 +222,20 @@ AVAILABLE_REACTIONS = [
     "😢", "🎉", "🤩", "🤮", "💩", "🙏", "👌", "🕊", "🤡", "🥱"
 ]
 
+# Счетчик для контроля частоты текстовых ответов
+message_counter = 0
+
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
-    if message.from_user.is_bot:
+    global message_counter
+
+    # Игнорируем ботов и собственные сообщения
+    if message.from_user.is_bot or message.from_user.id == bot.get_me().id:
         return
 
     text = message.text or ""
 
-    # Фильтр спама
+    # Фильтр спама (удаляет мгновенно)
     spam_words = ["пробив", "госномер", "поиск человека", "бесплатно", "vpn", "впн"]
     if any(word in text.lower() for word in spam_words):
         try:
@@ -239,24 +244,28 @@ def handle_message(message):
             pass
         return
 
-    # Выбор рандомной категории и фразы
-    category = random.choice(list(PHRASES.keys()))
-    reply_text = random.choice(PHRASES[category])
+    message_counter += 1
 
-    sent_msg = bot.reply_to(message, reply_text)
-
-    # Случайная реакция
+    # Ставим реакцию на сообщение пользователя, чтобы показывать активность без спама текстом
     try:
         reaction = random.choice(AVAILABLE_REACTIONS)
         bot.set_message_reaction(
             message.chat.id,
-            sent_msg.message_id,
+            message.id,
             [telebot.types.ReactionTypeEmoji(reaction)]
         )
     except Exception:
         pass
 
+    # Отправляем текстовый ответ только каждые 15 сообщений
+    if message_counter >= 15:
+        message_counter = 0  # Сбрасываем счетчик
+        
+        category = random.choice(list(PHRASES.keys()))
+        reply_text = random.choice(PHRASES[category])
+        
+        bot.reply_to(message, reply_text)
+
 if __name__ == "__main__":
-    print("Бот со всеми обновлениями запущен...")
+    print("Топякский бот запущен и переведен в сдержанный режим...")
     bot.infinity_polling()
-    
