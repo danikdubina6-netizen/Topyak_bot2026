@@ -7,7 +7,7 @@ from collections import defaultdict
 TOKEN = "8888128306:AAGDA3JJZx5_KCsku2FH-gDRIZ1o1l0grf4"
 bot = telebot.TeleBot(TOKEN)
 
-# Словарь для точного подсчета сообщений в каждом чате отдельно
+# Счетчик для групповых чатов
 message_counters = defaultdict(int)
 
 PHRASES = {
@@ -110,38 +110,9 @@ AVAILABLE_REACTIONS = [
     "😢", "🎉", "🤩", "🤮", "💩", "🙏", "👌", "🕊", "🤡", "🥱"
 ]
 
-@bot.message_handler(func=lambda message: True)
-def handle_message(message):
-    # Игнорируем ботов и самих себя
-    if message.from_user.is_bot or message.from_user.id == bot.get_me().id:
-        return
-
-    text = message.text or ""
-
-    # Фильтр спама — удаляем сразу, счетчик для него не крутим
-    spam_words = ["пробив", "госномер", "поиск человека", "бесплатно", "vpn", "впн"]
-    if any(word in text.lower() for word in spam_words):
-        try:
-            bot.delete_message(message.chat.id, message.id)
-        except Exception:
-            pass
-        return
-
-    chat_id = message.chat.id
-
-    # Считаем каждое сообщение в чате
-    message_counters[chat_id] += 1
-
-    # Пока не набралось 15 сообщений — бот железобетонно молчит и не ставит реакции
-    if message_counters[chat_id] < 15:
-        return
-
-    # Наступило 15-е сообщение — сбрасываем счетчик
-    message_counters[chat_id] = 0
-
-    # Ровно на 15-м сообщении выбираем: либо реакция, либо ответ текстом
+def process_bot_action(message):
+    """Общая логика ответа или реакции"""
     action_type = random.choice(["reaction", "text"])
-
     if action_type == "reaction":
         try:
             reaction = random.choice(AVAILABLE_REACTIONS)
@@ -160,22 +131,51 @@ def handle_message(message):
         except Exception:
             pass
 
+@bot.message_handler(func=lambda message: True)
+def handle_message(message):
+    if message.from_user.is_bot or message.from_user.id == bot.get_me().id:
+        return
+
+    text = message.text or ""
+
+    # Фильтр спама
+    spam_words = ["пробив", "госномер", "поиск человека", "бесплатно", "vpn", "впн"]
+    if any(word in text.lower() for word in spam_words):
+        try:
+            bot.delete_message(message.chat.id, message.id)
+        except Exception:
+            pass
+        return
+
+    chat_type = message.chat.type  # 'private', 'group', 'supergroup'
+
+    # Если это личные сообщения (ЛС) — отвечаем сразу на каждое сообщение без ограничений
+    if chat_type == 'private':
+        process_bot_action(message)
+        return
+
+    # Если это группы или супергруппы — включаем счетчик на 15 сообщений
+    chat_id = message.chat.id
+    message_counters[chat_id] += 1
+
+    if message_counters[chat_id] < 15:
+        return
+
+    # Наступило 15-е сообщение в группе
+    message_counters[chat_id] = 0
+    process_bot_action(message)
+
 if __name__ == "__main__":
-    print("Топякский бот запущен в режиме ультра-скрытности (1 действие на 15 сообщений)...")
+    print("Бот запущен: в ЛС без лимитов, в группах каждые 15 сообщений...")
     
-    # Авто-перезапуск скрипта каждые 5 часов (чтобы не упираться в 6-часовой лимит раннера GitHub)
     start_time = time.time()
-    
     while True:
         try:
-            # Запускаем поллинг в отдельном потоке/блоке с таймаутом
-            # Если прошло больше 5 часов 40 минут — завершаем процесс, GitHub сам подхватит новый раннер по cron
             if time.time() - start_time > (5 * 3600 + 40 * 60):
-                print("Время сеанса подходит к концу, мягкий перезапуск...")
+                print("Мягкий перезапуск сеанса...")
                 break
-                
             bot.polling(none_stop=True, interval=1, timeout=20)
         except Exception as e:
             print(f"Ошибка соединения: {e}")
             time.sleep(5)
-        
+            
