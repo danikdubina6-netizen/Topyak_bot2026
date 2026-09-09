@@ -5,6 +5,8 @@ import telebot
 from collections import defaultdict
 
 TOKEN = "8888128306:AAGDA3JJZx5_KCsku2FH-gDRIZ1o1l0grf4"
+BOT_USERNAME = "@assistantasil_bot"  # Указали юзернейм бота явно
+
 bot = telebot.TeleBot(TOKEN)
 
 message_counters = defaultdict(int)
@@ -200,19 +202,25 @@ def handle_message(message):
             pass
         return
 
-    # Проверяем, упоминают ли бота или отвечают ли на его сообщение (в группах)
+    # Проверяем упоминание или реплай в группах
     is_mentioned = False
-    bot_username = bot.get_me().username
     
     # Проверка реплая на сообщение бота
     if message.reply_to_message and message.reply_to_message.from_user.id == bot.get_me().id:
         is_mentioned = True
         
-    # Проверка упоминания по юзернейму в тексте
-    if bot_username and f"@{bot_username.lower()}" in text.lower():
+    # Проверка упоминания по юзернейму @Assistantasil_bot или через entity (упоминания телеграма)
+    if BOT_USERNAME in text.lower():
         is_mentioned = True
+    elif message.entities:
+        for entity in message.entities:
+            if entity.type == "mention":
+                mention_text = text[entity.offset:entity.offset + entity.length].lower()
+                if mention_text == BOT_USERNAME:
+                    is_mentioned = True
+                    break
 
-    # Если упомянули или репнули — отвечаем сразу вне зависимости от счетчика
+    # Если упомянули через @Assistantasil_bot или ответили на сообщение — отвечаем сразу
     if is_mentioned:
         try:
             bot.reply_to(message, get_random_phrase())
@@ -251,7 +259,7 @@ def handle_message(message):
             pass
 
 if __name__ == "__main__":
-    print("Бот запущен: ЛС — на всё, группы — каждые 15 соо + при упоминании/реплае.")
+    print("Бот запущен с поддержкой @Assistantasil_bot!")
     
     start_time = time.time()
     while True:
