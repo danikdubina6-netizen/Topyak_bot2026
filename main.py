@@ -193,9 +193,10 @@ def handle_message(message):
             pass
         return
 
-    # ЭХО-команда: если сообщение начинается со слова "скажи"
-    if text.lower().startswith("скажи"):
-        to_say = text[5:].strip()
+    # ЭХО-команда: проверяем слово "скажи" (даже если передан юзернейм бота перед ним)
+    clean_text = text.lower().replace(f"@{BOT_USERNAME}", "").strip()
+    if clean_text.startswith("скажи"):
+        to_say = clean_text[5:].strip()
         if to_say:
             try:
                 bot.send_message(message.chat.id, to_say)
@@ -284,11 +285,11 @@ def handle_message(message):
             print(f"[ERROR] Ошибка планового сообщения: {e}")
 
 if __name__ == "__main__":
-    print("Бот запущен в полную силу...")
+    print("Бот запущен на полную мощность со всеми фичами...")
     while True:
         try:
             bot.polling(none_stop=True, interval=0, timeout=20)
         except Exception as e:
             print(f"[CRITICAL] Ошибка polling: {e}")
             time.sleep(5)
-        
+            
