@@ -76,7 +76,7 @@ def handle_message(message):
             pass
         return
 
-    # Считаем сообщения
+    # Считаем сообщения ж
     count = get_current_count() + 1
     save_current_count(count)
     
