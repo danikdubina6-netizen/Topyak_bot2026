@@ -180,7 +180,7 @@ def handle_message(message):
     print(f"[LOG] Чат: {message.chat.id} ({message.chat.type}) | От: {message.from_user.first_name} | Текст: {message.text}")
 
     if message.from_user.is_bot and message.from_user.id != bot.get_me().id:
-        return  # игнорируем других ботов, но не себя
+        return
 
     text = message.text or ""
 
@@ -195,22 +195,24 @@ def handle_message(message):
 
     chat_type = message.chat.type  # 'private', 'group', 'supergroup'
 
-    # В ЛС: строго отвечаем на каждое сообщение
+    # 1. СТРОГОЕ ПРАВИЛО ДЛЯ ЛС: всегда отвечаем текстом на КАЖДОЕ сообщение
     if chat_type == 'private':
         try:
             bot.send_message(message.chat.id, get_random_phrase())
+            print(f"[ACTION] Отправлен ответ в ЛС на сообщение: {text}")
         except Exception as e:
-            print(f"[ERROR] ЛС: {e}")
+            print(f"[ERROR] Ошибка отправки в ЛС: {e}")
         return
 
-    # Же железобетонная проверка: упоминают ли бота ИЛИ делают ли реплай на сообщение бота
+    # --- ДАЛЬШЕ ЛОГИКА ТОЛЬКО ДЛЯ ГРУПП ---
+
     is_triggered = False
 
-    # 1. Проверяем текст на наличие юзернейма
+    # Проверка упоминания по юзернейму
     if BOT_USERNAME in text.lower():
         is_triggered = True
 
-    # 2. Проверяем Telegram entities (кликабельные упоминания)
+    # Проверка Telegram entities (кликабельные упоминания)
     if message.entities:
         for entity in message.entities:
             if entity.type == "mention":
@@ -219,35 +221,34 @@ def handle_message(message):
                     is_triggered = True
                     break
 
-    # 3. Проверяем реплай (если отвечают на сообщение нашего бота)
+    # Проверка реплая на сообщение бота
     if message.reply_to_message:
         replied = message.reply_to_message
-        # Если автор исходного сообщения — наш бот, или в тексте исходного сообщения есть имя/тег нашего бота
         if replied.from_user and replied.from_user.id == bot.get_me().id:
             is_triggered = True
         elif replied.text and (BOT_USERNAME in replied.text.lower() or "топякский ии" in replied.text.lower()):
             is_triggered = True
 
-    # Если сработал любой триггер упоминания или реплая — отвечаем моментально
+    # Если упомянули или сделали реплай в группе — отвечаем моментально
     if is_triggered:
-        print(f"[ACTION] Сработал триггер (реплай/упоминание) в чате {message.chat.id}")
+        print(f"[ACTION] Сработал триггер (реплай/упоминание) в группе {message.chat.id}")
         try:
             bot.reply_to(message, get_random_phrase())
         except Exception as e:
-            print(f"[ERROR] Не удалось ответить на реплай: {e}")
+            print(f"[ERROR] Не удалось ответить в группе: {e}")
         return
 
-    # В группах (обычные сообщения) — копим счетчик до 15
+    # Обычные сообщения в группах — считаем до 15
     chat_id = message.chat.id
     message_counters[chat_id] += 1
-    print(f"[COUNTER] Чат {chat_id}: {message_counters[chat_id]}/15")
+    print(f"[COUNTER] Группа {chat_id}: {message_counters[chat_id]}/15")
 
     if message_counters[chat_id] < 15:
         return
 
     message_counters[chat_id] = 0
 
-    # Раз в 15 сообщений
+    # Раз в 15 сообщений в группе
     action_type = random.choice(["reaction", "text"])
     if action_type == "reaction":
         try:
@@ -267,16 +268,16 @@ def handle_message(message):
     else:
         try:
             bot.send_message(message.chat.id, get_random_phrase())
-            print(f"[ACTION] Отправлено плановое сообщение")
+            print(f"[ACTION] Отправлено плановое сообщение в группе")
         except Exception as e:
             print(f"[ERROR] Ошибка планового сообщения: {e}")
 
 if __name__ == "__main__":
-    print("Бот запущен с исправленной логикой реплаев...")
+    print("Бот запущен с исправленным приоритетом ЛС...")
     while True:
         try:
             bot.polling(none_stop=True, interval=0, timeout=20)
         except Exception as e:
             print(f"[CRITICAL] Ошибка polling: {e}")
             time.sleep(5)
-    
+            
