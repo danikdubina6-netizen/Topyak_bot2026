@@ -222,20 +222,20 @@ AVAILABLE_REACTIONS = [
     "😢", "🎉", "🤩", "🤮", "💩", "🙏", "👌", "🕊", "🤡", "🥱"
 ]
 
-# Счетчик для контроля частоты текстовых ответов
+# Глобальный счетчик сообщений
 message_counter = 0
 
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
     global message_counter
 
-    # Игнорируем ботов и собственные сообщения
+    # Игнорируем ботов и самих себя
     if message.from_user.is_bot or message.from_user.id == bot.get_me().id:
         return
 
     text = message.text or ""
 
-    # Фильтр спама (удаляет мгновенно)
+    # Фильтр спама — удаляем сразу, счетчик сообщений для них не крутим
     spam_words = ["пробив", "госномер", "поиск человека", "бесплатно", "vpn", "впн"]
     if any(word in text.lower() for word in spam_words):
         try:
@@ -244,28 +244,38 @@ def handle_message(message):
             pass
         return
 
+    # Считаем только реальные сообщения от людей
     message_counter += 1
 
-    # Ставим реакцию на сообщение пользователя, чтобы показывать активность без спама текстом
-    try:
-        reaction = random.choice(AVAILABLE_REACTIONS)
-        bot.set_message_reaction(
-            message.chat.id,
-            message.id,
-            [telebot.types.ReactionTypeEmoji(reaction)]
-        )
-    except Exception:
-        pass
+    # Пока не набралось 15 сообщений — бот вообще молчит и не отсвечивает
+    if message_counter < 15:
+        return
 
-    # Отправляем текстовый ответ только каждые 15 сообщений
-    if message_counter >= 15:
-        message_counter = 0  # Сбрасываем счетчик
-        
-        category = random.choice(list(PHRASES.keys()))
-        reply_text = random.choice(PHRASES[category])
-        
-        bot.reply_to(message, reply_text)
+    # Как только наступило 15-е сообщение — сбрасываем счетчик
+    message_counter = 0
+
+    # Выбираем случайным образом: либо поставить реакцию (50% шанс), либо ответить текстом (50% шанс)
+    action_type = random.choice(["reaction", "text"])
+
+    if action_type == "reaction":
+        try:
+            reaction = random.choice(AVAILABLE_REACTIONS)
+            bot.set_message_reaction(
+                message.chat.id,
+                message.id,
+                [telebot.types.ReactionTypeEmoji(reaction)]
+            )
+        except Exception:
+            pass
+    else:
+        try:
+            category = random.choice(list(PHRASES.keys()))
+            reply_text = random.choice(PHRASES[category])
+            bot.reply_to(message, reply_text)
+        except Exception:
+            pass
 
 if __name__ == "__main__":
-    print("Топякский бот запущен и переведен в сдержанный режим...")
+    print("Топякский бот перешел в ультра-скрытный режим (1 сообщение из 15)...")
     bot.infinity_polling()
+    
