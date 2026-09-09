@@ -193,9 +193,20 @@ def handle_message(message):
             pass
         return
 
+    # ЭХО-команда: если сообщение начинается со слова "скажи"
+    if text.lower().startswith("скажи"):
+        to_say = text[5:].strip()
+        if to_say:
+            try:
+                bot.send_message(message.chat.id, to_say)
+                print(f"[ACTION] Повторил фразу: {to_say}")
+            except Exception as e:
+                print(f"[ERROR] Ошибка эха: {e}")
+            return
+
     chat_type = message.chat.type  # 'private', 'group', 'supergroup'
 
-    # 1. СТРОГОЕ ПРАВИЛО ДЛЯ ЛС: всегда отвечаем текстом на КАЖДОЕ сообщение
+    # 1. СТРОГОЕ ПРАВИЛО ДЛЯ ЛС: всегда отвечаем текстом на каждое сообщение
     if chat_type == 'private':
         try:
             bot.send_message(message.chat.id, get_random_phrase())
@@ -273,11 +284,11 @@ def handle_message(message):
             print(f"[ERROR] Ошибка планового сообщения: {e}")
 
 if __name__ == "__main__":
-    print("Бот запущен с исправленным приоритетом ЛС...")
+    print("Бот запущен в полную силу...")
     while True:
         try:
             bot.polling(none_stop=True, interval=0, timeout=20)
         except Exception as e:
             print(f"[CRITICAL] Ошибка polling: {e}")
             time.sleep(5)
-            
+        
