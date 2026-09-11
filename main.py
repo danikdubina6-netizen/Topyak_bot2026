@@ -92,6 +92,28 @@ def get_random_phrase():
     category = random.choice(list(PHRASES.keys()))
     return random.choice(PHRASES[category])
 
+# Обработчик команды "скажи" / "повтори"
+@bot.message_handler(func=lambda message: message.text and message.text.lower().startswith(('скажи ', 'повтори ')))
+def echo_command(message):
+    if message.from_user.id == bot.get_me().id:
+        return
+    
+    text_to_repeat = message.text.split(maxsplit=1)
+    if len(text_to_repeat) > 1:
+        repeat_text = text_to_repeat[1]
+        try:
+            time.sleep(0.2)
+            if message.chat.type != 'private':
+                bot.reply_to(message, repeat_text)
+            else:
+                bot.send_message(message.chat.id, repeat_text)
+            print(f"[DEBUG] Повторил фразу: {repeat_text}")
+        except Exception as e:
+            print(f"Ошибка эхо-команды: {e}")
+    else:
+        bot.reply_to(message, "А что сказать-то? Напиши после команды.")
+
+# Основной обработчик сообщений
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
     if message.from_user.id == bot.get_me().id:
@@ -135,6 +157,6 @@ def handle_message(message):
 
 if __name__ == "__main__":
     bot.remove_webhook()
-    print("Бот запущен с юзернеймом Assistantasil_bot!")
+    print("Бот запущен с поддержкой эхо-команд и юзернеймом Assistantasil_bot!")
     bot.infinity_polling()
     
