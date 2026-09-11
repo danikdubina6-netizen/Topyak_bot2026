@@ -92,28 +92,6 @@ def get_random_phrase():
     category = random.choice(list(PHRASES.keys()))
     return random.choice(PHRASES[category])
 
-# Обработчик команды "скажи" / "повтори"
-@bot.message_handler(func=lambda message: message.text and message.text.lower().startswith(('скажи ', 'повтори ')))
-def echo_command(message):
-    if message.from_user.id == bot.get_me().id:
-        return
-    
-    text_to_repeat = message.text.split(maxsplit=1)
-    if len(text_to_repeat) > 1:
-        repeat_text = text_to_repeat[1]
-        try:
-            time.sleep(0.2)
-            if message.chat.type != 'private':
-                bot.reply_to(message, repeat_text)
-            else:
-                bot.send_message(message.chat.id, repeat_text)
-            print(f"[DEBUG] Повторил фразу: {repeat_text}")
-        except Exception as e:
-            print(f"Ошибка эхо-команды: {e}")
-    else:
-        bot.reply_to(message, "А что сказать-то? Напиши после команды.")
-
-# Основной обработчик сообщений
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
     if message.from_user.id == bot.get_me().id:
@@ -122,6 +100,25 @@ def handle_message(message):
     chat_type = message.chat.type
     text = message.text.lower() if message.text else ""
 
+    # 1. ПЕРВЫМ ДЕЛОМ проверяем эхо-команду
+    if text.startswith(('скажи ', 'повтори ')):
+        text_to_repeat = message.text.split(maxsplit=1)
+        if len(text_to_repeat) > 1:
+            repeat_text = text_to_repeat[1]
+            try:
+                time.sleep(0.2)
+                if chat_type != 'private':
+                    bot.reply_to(message, repeat_text)
+                else:
+                    bot.send_message(message.chat.id, repeat_text)
+                print(f"[DEBUG] Повторил фразу: {repeat_text}")
+            except Exception as e:
+                print(f"Ошибка эхо-команды: {e}")
+        else:
+            bot.reply_to(message, "А что сказать-то? Напиши после команды.")
+        return
+
+    # 2. Если личка — отвечаем рандомом
     if chat_type == 'private':
         try:
             time.sleep(0.2)
@@ -130,6 +127,7 @@ def handle_message(message):
             print(f"Ошибка ЛС: {e}")
         return
 
+    # 3. В группах проверяем упоминание или реплай
     is_mentioned = f"@{BOT_USERNAME}" in text
     is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user.id == bot.get_me().id
 
@@ -142,6 +140,7 @@ def handle_message(message):
             print(f"Ошибка ответа по упоминанию: {e}")
         return
 
+    # 4. Иначе — считаем сообщения для антиспама (каждые 15)
     group_id = message.chat.id
     group_counters[group_id] += 1
     print(f"[DEBUG] Группа {group_id} | Счётчик сообщений: {group_counters[group_id]}/15")
@@ -157,6 +156,6 @@ def handle_message(message):
 
 if __name__ == "__main__":
     bot.remove_webhook()
-    print("Бот запущен с поддержкой эхо-команд и юзернеймом Assistantasil_bot!")
+    print("Бот запущен с исправленной эхо-командой и антиспамом!")
     bot.infinity_polling()
     
