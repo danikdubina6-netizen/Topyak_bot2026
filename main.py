@@ -3,7 +3,7 @@ import random
 import time
 import telebot
 
-TELEGRAM_TOKEN = "8888128306:AAGDA3JJZx5_KCsku2FH-gDRIZ1o1l0grf4"
+TELEGRAM_TOKEN = "8888128306:AAGDA3JJZx5_KCsku2FH-gDRIZ1l0grf4"
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
 # Юзернейм твоего бота (без @)
@@ -434,16 +434,38 @@ def handle_message(message):
 
     chat_id = message.chat.id
     chat_type = message.chat.type
-    text = message.text.lower() if message.text else ""
+    raw_text = message.text if message.text else ""
+    text_lower = raw_text.lower()
 
-    # 1. Личные сообщения — отвечаем на каждое
+    # 1. Личные сообщения — отвечаем на каждое (кроме команд повтора, для них обработка ниже)
     if chat_type == 'private':
+        # Проверка на "скажи / повтори / озвучь" в личке
+        for prefix in ["скажи ", "повтори ", "озвучь "]:
+            if text_lower.startswith(prefix):
+                repeat_text = raw_text[len(prefix):].strip()
+                if repeat_text:
+                    time.sleep(0.2)
+                    bot.send_message(chat_id, repeat_text)
+                    return
+        
         time.sleep(0.2)
         bot.send_message(chat_id, random.choice(RANDOM_PHRASES))
         return
 
-    # 2. Проверяем, упоминают ли бота или отвечают реплаем на его сообщение
-    is_mentioned = f"@{BOT_USERNAME}" in text
+    # 2. Проверка команд повтора («скажи...», «повтори...», «озвучь...») в группах
+    for prefix in ["скажи ", "повтори ", "озвучь "]:
+        if text_lower.startswith(prefix):
+            repeat_text = raw_text[len(prefix):].strip()
+            if repeat_text:
+                try:
+                    time.sleep(0.2)
+                    bot.reply_to(message, repeat_text)
+                except Exception as e:
+                    print(f"Ошибка повтора: {e}")
+                return
+
+    # 3. Проверяем, упоминают ли бота или отвечают реплаем на его сообщение
+    is_mentioned = f"@{BOT_USERNAME}" in text_lower
     is_reply = message.reply_to_message and message.reply_to_message.from_user.id == bot.get_me().id
 
     if is_mentioned or is_reply:
@@ -454,14 +476,14 @@ def handle_message(message):
             print(f"Ошибка ответа на упоминание: {e}")
         return
 
-    # 3. В группах считаем обычные сообщения
+    # 4. В группах считаем обычные сообщения до 15
     if chat_id not in message_counters:
         message_counters[chat_id] = 0
 
     message_counters[chat_id] += 1
     print(f"Чат {chat_id}: сообщение №{message_counters[chat_id]}")
 
-    # Каждое 15-е сообщение — вбрасываем фразу
+    # Каждое 15-е сообщение — вбрасываем случайную фразу
     if message_counters[chat_id] >= 15:
         message_counters[chat_id] = 0  # Сбрасываем счетчик
         try:
@@ -472,5 +494,5 @@ def handle_message(message):
 
 if __name__ == "__main__":
     bot.remove_webhook()
-    print("Бот со строгим счетчиком (15 сообщений) и триггерами запущен!")
+    print("Бот с функцией повторения и счетчиком запущен!")
     bot.infinity_polling()
