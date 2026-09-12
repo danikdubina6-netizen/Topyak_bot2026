@@ -6,6 +6,9 @@ import telebot
 TELEGRAM_TOKEN = "8888128306:AAGDA3JJZx5_KCsku2FH-gDRIZ1o1l0grf4"
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
+# Юзернейм твоего бота (без @)
+BOT_USERNAME = "assistantasil_bot".lower()
+
 # Ровно 400 уникальных фраз
 RANDOM_PHRASES = [
     # 1-50: Приветствия и вайб
@@ -164,7 +167,7 @@ RANDOM_PHRASES = [
     "Жесткий тип.",
     "Красавчик, чё сказать.",
 
-    # 151-200: Жизненные фразы, движ и вайб (без душного программирования)
+    # 151-200: Жизненные фразы, движ и вайб
     "Погнали на улицы, там интереснее.",
     "Время пить чай и думать о вечном.",
     "Жизнь коротка, проводи её с теми, кто дорог.",
@@ -431,14 +434,27 @@ def handle_message(message):
 
     chat_id = message.chat.id
     chat_type = message.chat.type
+    text = message.text.lower() if message.text else ""
 
-    # В личке отвечаем на каждое сообщение
+    # 1. Личные сообщения — отвечаем на каждое
     if chat_type == 'private':
         time.sleep(0.2)
         bot.send_message(chat_id, random.choice(RANDOM_PHRASES))
         return
 
-    # В группах считаем сообщения до 15
+    # 2. Проверяем, упоминают ли бота или отвечают реплаем на его сообщение
+    is_mentioned = f"@{BOT_USERNAME}" in text
+    is_reply = message.reply_to_message and message.reply_to_message.from_user.id == bot.get_me().id
+
+    if is_mentioned or is_reply:
+        try:
+            time.sleep(0.3)
+            bot.reply_to(message, random.choice(RANDOM_PHRASES))
+        except Exception as e:
+            print(f"Ошибка ответа на упоминание: {e}")
+        return
+
+    # 3. В группах считаем обычные сообщения
     if chat_id not in message_counters:
         message_counters[chat_id] = 0
 
@@ -450,11 +466,11 @@ def handle_message(message):
         message_counters[chat_id] = 0  # Сбрасываем счетчик
         try:
             time.sleep(0.3)
-            bot.reply_to(message, random.choice(RANDOM_PHRASES))
+            bot.send_message(chat_id, random.choice(RANDOM_PHRASES))
         except Exception as e:
             print(f"Ошибка отправки: {e}")
 
 if __name__ == "__main__":
     bot.remove_webhook()
-    print("Бот со всеми 400 фразами (без душноты) запущен!")
+    print("Бот со строгим счетчиком (15 сообщений) и триггерами запущен!")
     bot.infinity_polling()
