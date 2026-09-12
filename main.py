@@ -6,25 +6,23 @@ import telebot
 TELEGRAM_TOKEN = "8888128306:AAGDA3JJZx5_KCsku2FH-gDRIZ1l0grf4"
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
-# Юзернейм твоего бота (без @)
 BOT_USERNAME = "assistantasil_bot".lower()
 
-# Ровно 400 уникальных фраз
 RANDOM_PHRASES = [
     # 1-50: Приветствия и вайб
-    "Хай! Раннеры крутятся, бот мутится.",
+    "Хай! Тема крутится, бот мутится.",
     "Вечер в хату.",
     "О, здарова! Чего нового в мире?",
     "Здорово, бандиты.",
     "Всем салам из матрицы.",
-    "Йоу, на связи Топяк.",
-    "Привет! Раннеры летают, бот отвечает.",
+    "Йоу, на связи.",
+    "Привет! Всё летает, бот отвечает.",
     "И тебе не кашлять.",
     "Шалом, православные и не только.",
     "Здарова, легенда.",
     "Салют всем присутствующим.",
     "Здорово, работяги.",
-    "Привет-привет, код в ответ.",
+    "Привет-привет, ответ в ответ.",
     "Хайушки!",
     "Здорово был!",
     "Добрейшего вечерочка.",
@@ -35,13 +33,13 @@ RANDOM_PHRASES = [
     "Здорово, старый.",
     "Хай, бро.",
     "Привет, человечище.",
-    "Здарова, программисты и сочувствующие.",
+    "Здарова, тусовщики и сочувствующие.",
     "Приветствую на борту.",
     "Здорово, гений мысли.",
     "Хай, народ.",
     "Привет тем, кто не спит.",
     "Здарова, тусовка.",
-    "Привет, любитель раннеров.",
+    "Привет, любитель движухи.",
     "Здорово, шеф.",
     "Хай, ковбой.",
     "Привет, как жизнь молодая?",
@@ -129,7 +127,7 @@ RANDOM_PHRASES = [
     "И чо теперь делать будем?",
     "Нашел кого спрашивать.",
     "Гениально, но нет.",
-    "Шел бы ты уроки учить, умник.",
+    "Шел бы ты своими делами заниматься, умник.",
     "Опять двадцать пять.",
     "Кто бы сомневался.",
     "Логично, спорить не буду.",
@@ -436,7 +434,7 @@ def handle_message(message):
     raw_text = message.text if message.text else ""
     text_lower = raw_text.lower()
 
-    # 1. Проверяем триггеры повтора («скажи», «повтори», «озвучь»)
+    # Ловим триггеры повтора в любом месте сообщения
     triggers = ["скажи", "повтори", "озвучь"]
     for trigger in triggers:
         if trigger in text_lower:
@@ -451,17 +449,17 @@ def handle_message(message):
                         bot.send_message(chat_id, repeat_text)
                     else:
                         bot.reply_to(message, repeat_text)
-                except Exception as e:
-                    print(f"Ошибка повтора: {e}")
+                except Exception:
+                    pass
                 return
 
-    # 2. Личные сообщения — отвечаем на каждое
+    # Личка
     if chat_type == 'private':
         time.sleep(0.2)
         bot.send_message(chat_id, random.choice(RANDOM_PHRASES))
         return
 
-    # 3. Проверяем упоминание или реплай на бота
+    # Упоминания или реплаи в группе
     is_mentioned = f"@{BOT_USERNAME}" in text_lower
     is_reply = message.reply_to_message and message.reply_to_message.from_user.id == bot.get_me().id
 
@@ -469,26 +467,25 @@ def handle_message(message):
         try:
             time.sleep(0.3)
             bot.reply_to(message, random.choice(RANDOM_PHRASES))
-        except Exception as e:
-            print(f"Ошибка ответа на упоминание: {e}")
+        except Exception:
+            pass
         return
 
-    # 4. В группах считаем сообщения до 15
+    # Счетчик сообщений в группе до 15
     if chat_id not in message_counters:
         message_counters[chat_id] = 0
 
     message_counters[chat_id] += 1
-    print(f"Чат {chat_id}: сообщение №{message_counters[chat_id]}")
 
     if message_counters[chat_id] >= 15:
         message_counters[chat_id] = 0
         try:
             time.sleep(0.3)
             bot.send_message(chat_id, random.choice(RANDOM_PHRASES))
-        except Exception as e:
-            print(f"Ошибка отправки: {e}")
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     bot.remove_webhook()
-    print("Бот запущен со всеми 400 фразами!")
     bot.infinity_polling()
+            
