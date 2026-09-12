@@ -424,7 +424,6 @@ RANDOM_PHRASES = [
     "Всё, ровно 400 фраз на месте, отдыхаем."
 ]
 
-# Словарь для подсчета сообщений по чатам: {chat_id: счетчик}
 message_counters = {}
 
 @bot.message_handler(func=lambda message: True)
@@ -437,34 +436,32 @@ def handle_message(message):
     raw_text = message.text if message.text else ""
     text_lower = raw_text.lower()
 
-    # 1. Личные сообщения — отвечаем на каждое (кроме команд повтора, для них обработка ниже)
-    if chat_type == 'private':
-        # Проверка на "скажи / повтори / озвучь" в личке
-        for prefix in ["скажи ", "повтори ", "озвучь "]:
-            if text_lower.startswith(prefix):
-                repeat_text = raw_text[len(prefix):].strip()
-                if repeat_text:
-                    time.sleep(0.2)
-                    bot.send_message(chat_id, repeat_text)
-                    return
-        
-        time.sleep(0.2)
-        bot.send_message(chat_id, random.choice(RANDOM_PHRASES))
-        return
-
-    # 2. Проверка команд повтора («скажи...», «повтори...», «озвучь...») в группах
-    for prefix in ["скажи ", "повтори ", "озвучь "]:
-        if text_lower.startswith(prefix):
-            repeat_text = raw_text[len(prefix):].strip()
+    # 1. Проверяем триггеры повтора («скажи», «повтори», «озвучь»)
+    triggers = ["скажи", "повтори", "озвучь"]
+    for trigger in triggers:
+        if trigger in text_lower:
+            idx = text_lower.find(trigger)
+            repeat_text = raw_text[idx + len(trigger):].strip()
+            repeat_text = repeat_text.lstrip(":-—, ").strip()
+            
             if repeat_text:
                 try:
                     time.sleep(0.2)
-                    bot.reply_to(message, repeat_text)
+                    if chat_type == 'private':
+                        bot.send_message(chat_id, repeat_text)
+                    else:
+                        bot.reply_to(message, repeat_text)
                 except Exception as e:
                     print(f"Ошибка повтора: {e}")
                 return
 
-    # 3. Проверяем, упоминают ли бота или отвечают реплаем на его сообщение
+    # 2. Личные сообщения — отвечаем на каждое
+    if chat_type == 'private':
+        time.sleep(0.2)
+        bot.send_message(chat_id, random.choice(RANDOM_PHRASES))
+        return
+
+    # 3. Проверяем упоминание или реплай на бота
     is_mentioned = f"@{BOT_USERNAME}" in text_lower
     is_reply = message.reply_to_message and message.reply_to_message.from_user.id == bot.get_me().id
 
@@ -476,16 +473,15 @@ def handle_message(message):
             print(f"Ошибка ответа на упоминание: {e}")
         return
 
-    # 4. В группах считаем обычные сообщения до 15
+    # 4. В группах считаем сообщения до 15
     if chat_id not in message_counters:
         message_counters[chat_id] = 0
 
     message_counters[chat_id] += 1
     print(f"Чат {chat_id}: сообщение №{message_counters[chat_id]}")
 
-    # Каждое 15-е сообщение — вбрасываем случайную фразу
     if message_counters[chat_id] >= 15:
-        message_counters[chat_id] = 0  # Сбрасываем счетчик
+        message_counters[chat_id] = 0
         try:
             time.sleep(0.3)
             bot.send_message(chat_id, random.choice(RANDOM_PHRASES))
@@ -494,5 +490,5 @@ def handle_message(message):
 
 if __name__ == "__main__":
     bot.remove_webhook()
-    print("Бот с функцией повторения и счетчиком запущен!")
+    print("Бот запущен со всеми 400 фразами!")
     bot.infinity_polling()
