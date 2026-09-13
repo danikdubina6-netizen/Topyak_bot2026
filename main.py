@@ -528,3 +528,4 @@ def handle_message(message):
 
     is_mentioned = f"@{BOT_USERNAME}" in text_lower
     is_reply_to_bot = message.reply_to_message 
+
