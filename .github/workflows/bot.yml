@@ -2,15 +2,14 @@ name: Telegram Bot Runner
 
 on:
   push:
-  workflow_dispatch:
+    branches: [ main, master ]
   schedule:
-    # Запуск каждые 5 часов (на всякий случай, если ворфлоу умрет)
-    - cron: '0 */5 * * *'
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -25,19 +24,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytelegrambotapi
 
-      - name: Run bot with auto-restart (approx 4 hours 50 mins)
+      - name: Run Bot Continuously
         run: |
-          echo "Запускаем бота с автоперезапуском..."
-          # Цикл крутится почти 5 часов (17400 секунд), после чего завершается, 
-          # а GitHub Actions (благодаря restart-политике или новому рану) поднимет его заново.
-          # Либо можно сделать бесконечный цикл с принудительным kill старого процесса каждые 4.5 часа:
-          
-          python main.py &
-          BOT_PID=$!
-          
-          # Ждем 290 минут (4 часа 50 минут = 17400 секунд)
-          sleep 17400
-          
-          echo "Время вышло, гасим старого бота и завершаем шаг для перезапуска..."
-          kill $BOT_PID || true
+          python main.py
           
