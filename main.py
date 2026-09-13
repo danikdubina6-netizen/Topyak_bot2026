@@ -360,11 +360,9 @@ def handle_all_messages(message):
 
 
 if __name__ == '__main__':
-  print('Бот запущен и слушает сообщения...')
-  while True:
-    try:
-      bot.polling(none_stop=True, interval=1, timeout=30)
-    except Exception as e:
-      print(f'Ошибка соединения: {e}')
-      time.sleep(5)
-      
+  print('Проверка сообщений...')
+  try:
+    bot.infinity_polling(timeout=10, long_polling_timeout=5)
+  except Exception as e:
+    print(f'Сессия завершена: {e}')
+    
