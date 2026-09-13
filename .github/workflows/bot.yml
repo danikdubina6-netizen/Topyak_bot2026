@@ -3,9 +3,10 @@ name: Telegram Bot Runner
 on:
   push:
     branches: [ main, master ]
-  schedule:
-    - cron: '*/30 * * * *'
   workflow_dispatch:
+  schedule:
+    # Перезапуск каждые 5 часов, чтобы бот не тух
+    - cron: '0 */5 * * *'
 
 jobs:
   run-bot:
@@ -24,7 +25,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install pyTelegramBotAPI
 
-      - name: Run Bot Continuously
+      - name: Run Telegram Bot
+        # Принудительно завершает процесс через 300 минут (5 часов), 
+        # чтобы старый раннер не зависал навсегда.
+        timeout-minutes: 300
         env:
           TOKEN: ${{ secrets.TOKEN }}
         run: |
