@@ -8,7 +8,6 @@ bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
 BOT_USERNAME = "assistantasil_bot".lower()
 
-# Полный пак ровно из 500 реальных фраз без генераторов
 RANDOM_PHRASES = [
     # 1-50
     "Хай! Тема крутится, вайб мутится.",
@@ -541,4 +540,6 @@ def handle_message(message):
     raw_text = message.text if message.text else ""
     text_lower = raw_text.lower()
 
-    # 1. Обработка прямых триггеров 
+    if chat_type == 'private':
+        time.sleep(0.2)
+        bot.send_message(chat_id, ran
