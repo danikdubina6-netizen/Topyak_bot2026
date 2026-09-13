@@ -3,7 +3,7 @@ import random
 import time
 import telebot
 
-TELEGRAM_TOKEN = "8888128306:AAGDA3JJZx5_KCsku2FH-gDRIZ1l0grf4"
+TELEGRAM_TOKEN = "8888128306:AAHvfzmD8wEB7IhC8QKmhoTWboulJm4V3OA"
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
 BOT_USERNAME = "assistantasil_bot".lower()
@@ -527,4 +527,4 @@ def handle_message(message):
         return
 
     is_mentioned = f"@{BOT_USERNAME}" in text_lower
-    is_reply_to_bot = message.reply_to_message an
+    is_reply_to_bot = message.reply_to_message 
