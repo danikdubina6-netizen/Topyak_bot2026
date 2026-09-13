@@ -9,8 +9,8 @@ if not TOKEN:
 
 bot = telebot.TeleBot(TOKEN)
 
-# Счётчик сообщений для каждых 15 сообщений
-message_counter = 0
+# Счётчик сообщений только для групп/супергрупп
+group_message_counter = 0
 
 # Полная база из 400 фраз
 RANDOM_PHRASES = [
@@ -332,31 +332,36 @@ def send_welcome(message):
 
 @bot.message_handler(func=lambda message: True)
 def handle_all_messages(message):
-  global message_counter
-  message_counter += 1
+  global group_message_counter
 
-  # Каждые 15 сообщений
-  if message_counter >= 15:
-    message_counter = 0
+  chat_type = message.chat.type
 
-    # Случайный выбор: либо ответить на сообщение, либо поставить реакцию
-    action_type = random.choice(['reply', 'reaction'])
+  # Если это личные сообщения (private) — отвечаем мгновенно на каждое сообщение без лимитов
+  if chat_type == 'private':
+    response_text = random.choice(RANDOM_PHRASES)
+    bot.reply_to(message, response_text)
+    return
 
-    if action_type == 'reply':
-      response_text = random.choice(RANDOM_PHRASES)
-      bot.reply_to(message, response_text)
-    else:
-      try:
-        # Ставим реакцию (например, смеющийся смайлик 😋 или 🔥)
-        bot.set_message_reaction(
-            message.chat.id,
-            message.message_id,
-            [telebot.types.ReactionTypeEmoji('😋')],
-        )
-      except Exception as e:
-        # Если вдруг у бота нет прав на реакции, просто ответим фразой
+  # Если это группа или супергруппа — включаем лимит (каждые 15 сообщений)
+  if chat_type in ['group', 'supergroup']:
+    group_message_counter += 1
+    if group_message_counter >= 15:
+      group_message_counter = 0
+
+      action_type = random.choice(['reply', 'reaction'])
+      if action_type == 'reply':
         response_text = random.choice(RANDOM_PHRASES)
         bot.reply_to(message, response_text)
+      else:
+        try:
+          bot.set_message_reaction(
+              message.chat.id,
+              message.message_id,
+              [telebot.types.ReactionTypeEmoji('😋')],
+          )
+        except Exception:
+          response_text = random.choice(RANDOM_PHRASES)
+          bot.reply_to(message, response_text)
 
 
 if __name__ == '__main__':
@@ -365,4 +370,4 @@ if __name__ == '__main__':
     bot.infinity_polling(timeout=10, long_polling_timeout=5)
   except Exception as e:
     print(f'Сессия завершена: {e}')
-    
+               
