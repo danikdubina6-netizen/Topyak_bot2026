@@ -1,5 +1,6 @@
 import os
 import random
+import re
 import telebot
 
 # Получаем токен из секретов GitHub Actions
@@ -9,7 +10,7 @@ if not TOKEN:
 
 bot = telebot.TeleBot(TOKEN)
 
-# Счётчик сообщений только для групп/супергрупп
+# Счётчик сообщений для групп/супергрупп
 group_message_counter = 0
 
 # Полная база из 400 фраз
@@ -226,7 +227,7 @@ RANDOM_PHRASES = [
     'Доверяй, но проверяй.',
     'Знал бы прикуп — жил бы в Сочи.',
     'Ирония судьбы, или С легким паром!',
-    'Капля за каплей и камень долбит.',
+    'Капля за каплею и камень долбит.',
     'Лучшая защита — нападение.',
     'Не оставляй на завтра то, что можешь сделать сегодня.',
     'Один за всех, и все за одного.',
@@ -335,15 +336,49 @@ def handle_all_messages(message):
   global group_message_counter
 
   chat_type = message.chat.type
+  text = message.text or ''
 
-  # Если это личные сообщения (private) — отвечаем мгновенно на каждое сообщение без лимитов
+  # 1. Если написали в ЛС — отвечаем сразу на каждое сообщение
   if chat_type == 'private':
+    # Проверяем фичу "Скажи..." в ЛС тоже
+    if text.lower().startswith('скажи '):
+      said_text = text[6:].strip()
+      if said_text:
+        bot.reply_to(message, said_text)
+        return
+
     response_text = random.choice(RANDOM_PHRASES)
     bot.reply_to(message, response_text)
     return
 
-  # Если это группа или супергруппа — включаем лимит (каждые 15 сообщений)
+  # 2. Если это группы/супергруппы
   if chat_type in ['group', 'supergroup']:
+    # Проверяем легендарную фичу "Скажи..." везде
+    if text.lower().startswith('скажи '):
+      said_text = text[6:].strip()
+      if said_text:
+        bot.reply_to(message, said_text)
+        return
+
+    # Проверяем, ответили ли на сообщение бота или упомянули его
+    is_reply_to_bot = (
+        message.reply_to_message
+        and message.reply_to_message.from_user.id == bot.get_me().id
+    )
+    is_mentioned = False
+
+    # Проверка упоминания по username бота
+    bot_username = bot.get_me().username
+    if bot_username and f'@{bot_username.lower()}' in text.lower():
+      is_mentioned = True
+
+    # Если бота упомянули или ответили на его сообщение — отвечаем мгновенно фразой
+    if is_reply_to_bot or is_mentioned:
+      response_text = random.choice(RANDOM_PHRASES)
+      bot.reply_to(message, response_text)
+      return
+
+    # Обычное фоновое сообщение в группе — крутим счетчик до 15
     group_message_counter += 1
     if group_message_counter >= 15:
       group_message_counter = 0
@@ -370,4 +405,4 @@ if __name__ == '__main__':
     bot.infinity_polling(timeout=10, long_polling_timeout=5)
   except Exception as e:
     print(f'Сессия завершена: {e}')
-               
+        
