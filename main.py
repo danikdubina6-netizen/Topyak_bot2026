@@ -4,7 +4,7 @@ import time
 import telebot
 
 # Получаем токен из секретов GitHub Actions
-TOKEN = os.getenv('BOT_TOKEN')
+TOKEN = os.getenv('TOKEN')
 if not TOKEN:
   raise ValueError(
       'Не найден токен! Проверь настройки GitHub Secrets (BOT_TOKEN).'
