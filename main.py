@@ -3,7 +3,7 @@ import random
 import time
 import telebot
 
-TELEGRAM_TOKEN = "8888128306:AAHvfzmD8wEB7IhC8QKmhoTWboulJm4V3OA"
+TELEGRAM_TOKEN = "8888128306:AAHbJKTDHydOc2oTCiBJp9ylVxsYEnx1eEc"
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
 BOT_USERNAME = "assistantasil_bot".lower()
