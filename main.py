@@ -1,20 +1,16 @@
 import os
 import random
-import time
 import telebot
 
 # Получаем токен из секретов GitHub Actions
 TOKEN = os.getenv('TOKEN')
 if not TOKEN:
-  raise ValueError(
-      'Не найден токен! Проверь настройки GitHub Secrets (BOT_TOKEN).'
-  )
+  raise ValueError('Не найден токен! Проверь настройки GitHub Secrets (TOKEN).')
 
 bot = telebot.TeleBot(TOKEN)
 
-# Словарь для защиты от спама
-user_last_message_time = {}
-SPAM_COOLDOWN = 15  # Антиспам на 15 секунд
+# Счётчик сообщений для каждых 15 сообщений
+message_counter = 0
 
 # Полная база из 400 фраз
 RANDOM_PHRASES = [
@@ -186,7 +182,7 @@ RANDOM_PHRASES = [
     'Замах на рубль, а удар на копейку.',
     'И грянул гром над головой.',
     'Каждому овощу свое время.',
-    'Лучше синица в руках, чем журавль в небе.',
+    'Лучшая синица в руках, чем журавль в небе.',
     'Не всё коту масленица, придет и пост.',
     'Остаться у разбитого корыта.',
     'Пан или пропал.',
@@ -330,33 +326,37 @@ def send_welcome(message):
   bot.reply_to(
       message,
       'Привет! Я бот проекта Топяк. В моей базе ровно 400 фраз! Напиши мне'
-      f' что-нибудь. (Антиспам: пауза {SPAM_COOLDOWN} секунд)',
+      ' что-нибудь.',
   )
 
 
 @bot.message_handler(func=lambda message: True)
 def handle_all_messages(message):
-  user_id = message.from_user.id
-  current_time = time.time()
+  global message_counter
+  message_counter += 1
 
-  # Проверка на антиспам (15 секунд)
-  if user_id in user_last_message_time:
-    elapsed_time = current_time - user_last_message_time[user_id]
-    if elapsed_time < SPAM_COOLDOWN:
-      remaining = int(SPAM_COOLDOWN - elapsed_time)
-      bot.reply_to(
-          message,
-          f'⏳ Слишком быстро! Подожди еще {remaining} сек., прежде чем писать'
-          ' снова.',
-      )
-      return
+  # Каждые 15 сообщений
+  if message_counter >= 15:
+    message_counter = 0
 
-  # Обновляем время последнего сообщения пользователя
-  user_last_message_time[user_id] = current_time
+    # Случайный выбор: либо ответить на сообщение, либо поставить реакцию
+    action_type = random.choice(['reply', 'reaction'])
 
-  # Выбираем случайную фразу из базы в 400 штук
-  response_text = random.choice(RANDOM_PHRASES)
-  bot.reply_to(message, response_text)
+    if action_type == 'reply':
+      response_text = random.choice(RANDOM_PHRASES)
+      bot.reply_to(message, response_text)
+    else:
+      try:
+        # Ставим реакцию (например, смеющийся смайлик 😋 или 🔥)
+        bot.set_message_reaction(
+            message.chat.id,
+            message.message_id,
+            [telebot.types.ReactionTypeEmoji('😋')],
+        )
+      except Exception as e:
+        # Если вдруг у бота нет прав на реакции, просто ответим фразой
+        response_text = random.choice(RANDOM_PHRASES)
+        bot.reply_to(message, response_text)
 
 
 if __name__ == '__main__':
