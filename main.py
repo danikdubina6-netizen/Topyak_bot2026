@@ -531,8 +531,6 @@ RANDOM_PHRASES = [
     "Всё, ровно пятьсот фраз, забирай и запускай."
 ]
 
-message_counters = {}
-
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
     if message.from_user.id == bot.get_me().id:
@@ -543,4 +541,4 @@ def handle_message(message):
     raw_text = message.text if message.text else ""
     text_lower = raw_text.lower()
 
-    # 1. Обра
+    # 1. Обработка прямых триггеров 
