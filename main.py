@@ -2,112 +2,74 @@ import os
 import random
 import telebot
 
-# Получаем токен из секретов GitHub Actions
-TOKEN = os.getenv('TOKEN')
+# Получаем токен из переменных окружения (или можно вставить строкой, но через env безопаснее)
+TOKEN = os.getenv("TOKEN")
 if not TOKEN:
-  raise ValueError('Не найден токен! Проверь настройки GitHub Secrets (TOKEN).')
+    # Если токен передается через секреты GitHub Actions / окружение
+    pass
 
 bot = telebot.TeleBot(TOKEN)
 
-# Счётчик сообщений для групп/супергрупп
-group_message_counter = 0
+# Функция для поиска подходящей фразы из файла phrases.txt
+def find_smart_reply(user_text: str) -> str:
+    # Проверяем, существует ли файл с базой
+    if not os.path.exists("phrases.txt"):
+        return "Файл с базой мудрости (phrases.txt) не найден, но дух Топая силен!"
 
+    # Загружаем все фразы из файла
+    with open("phrases.txt", "r", encoding="utf-8") as f:
+        phrases = [line.strip() for line in f if line.strip()]
+    
+    if not phrases:
+        return "Молчание — золото, но база фраз пуста."
 
-# Функция для загрузки фраз из внешнего файла
-def load_phrases(filename='phrases.txt'):
-  if not os.path.exists(filename):
-    # Запасной вариант, если файла вдруг нет
-    return [
-        'Жизнь измеряется не количеством вдохов, а моментами, когда от счастья захватывает дух.',
-        'Сентябрь 2026: время новых трендов и крутых мемов.',
-    ]
+    # Если текста сообщения нет (например, картинка или стикер), берем рандомную мудрость
+    if not user_text:
+        return random.choice(phrases)
 
-  with open(filename, 'r', encoding='utf-8') as f:
-    # Читаем строки, убираем пустые и лишние пробелы по краям
-    phrases = [line.strip() for line in f if line.strip()]
+    # Чистим текст пользователя и разбиваем на слова (исключая короткие слова < 4 символов)
+    user_words = set(w.lower() for w in user_text.split() if len(w) > 3)
+    
+    if not user_words:
+        return random.choice(phrases)
 
-  print(f'Загружено фраз из файла: {len(phrases)}')
-  return phrases
+    best_phrase = None
+    max_matches = 0
 
+    # Ищем фразу, в которой больше всего пересекающихся ключевых слов с сообщением
+    for phrase in phrases:
+        phrase_words = set(w.lower() for w in phrase.split())
+        matches = len(user_words.intersection(phrase_words))
+        
+        if matches > max_matches:
+            max_matches = matches
+            best_phrase = phrase
 
-# Загружаем базу при старте
-RANDOM_PHRASES = load_phrases()
+    # Если нашли точечное совпадение — возвращаем его, если совпадений 0 — берем рандом
+    if best_phrase and max_matches > 0:
+        return best_phrase
+    else:
+        return random.choice(phrases)
 
-
+# Обработчик команды /start
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-  bot.reply_to(
-      message,
-      (
-          f'Привет! Я бот проекта Топяк. В моей внешней базе загружено'
-          f' {len(RANDOM_PHRASES)} фраз. Напиши мне что-нибудь.'
-      ),
-  )
+    bot.reply_to(message, "Здаров! Тоб на связи. Задавай вопрос или пиши мысли — выдам базу.")
 
-
+# Обработчик всех текстовых сообщений
 @bot.message_handler(func=lambda message: True)
 def handle_all_messages(message):
-  global group_message_counter
+    # Получаем текст сообщения пользователя
+    user_text = message.text if message.text else ""
+    
+    # Ищем умную мудрость под контекст
+    reply_phrase = find_smart_reply(user_text)
+    
+    # Отправляем ответ реплаем на сообщение пользователя
+    bot.reply_to(message, reply_phrase)
 
-  chat_type = message.chat.type
-  text = message.text or ''
-  text_lower = text.lower()
-
-  # 1. ПРИОРИТЕТ: Фича "Скажи..."
-  if text_lower.startswith('скажи '):
-    said_text = text[6:].strip()
-    if said_text:
-      bot.reply_to(message, said_text)
-      return
-
-  # 2. Личные сообщения
-  if chat_type == 'private':
-    response_text = random.choice(RANDOM_PHRASES)
-    bot.reply_to(message, response_text)
-    return
-
-  # 3. Группы и супергруппы
-  if chat_type in ['group', 'supergroup']:
-    is_reply_to_bot = (
-        message.reply_to_message
-        and message.reply_to_message.from_user.id == bot.get_me().id
-    )
-    is_mentioned = False
-
-    bot_username = bot.get_me().username
-    if bot_username and f'@{bot_username.lower()}' in text_lower:
-      is_mentioned = True
-
-    if is_reply_to_bot or is_mentioned:
-      response_text = random.choice(RANDOM_PHRASES)
-      bot.reply_to(message, response_text)
-      return
-
-    # Фоновые сообщения в группе — считаем до 15
-    group_message_counter += 1
-    if group_message_counter >= 15:
-      group_message_counter = 0
-
-      action_type = random.choice(['reply', 'reaction'])
-      if action_type == 'reply':
-        response_text = random.choice(RANDOM_PHRASES)
-        bot.reply_to(message, response_text)
-      else:
-        try:
-          bot.set_message_reaction(
-              message.chat.id,
-              message.message_id,
-              [telebot.types.ReactionTypeEmoji('🔥')],
-          )
-        except Exception:
-          response_text = random.choice(RANDOM_PHRASES)
-          bot.reply_to(message, response_text)
-
-
-if __name__ == '__main__':
-  print('Бот с внешним файлом фраз запущен...')
-  try:
-    bot.infinity_polling(timeout=10, long_polling_timeout=5)
-  except Exception as e:
-    print(f'Сессия завершена: {e}')
-      
+if __name__ == "__main__":
+    print("Бот Топякский Мудрец запущен и готов раздавать мудрость...")
+    # Запуск поллинга с автопереподключением при сбоях сети
+    bot.infinity_polling(timeout=60, long_polling_timeout=60)
+  
