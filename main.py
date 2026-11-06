@@ -14,11 +14,11 @@ except Exception:
 
 chat_counters = {}
 
-# Список мусорных слов (стоп-слов), которые не несут глубокого смысла для подбора мудрости
+# Список стоп-слов, которые не несут глубокого смысла
 STOP_WORDS = {
-    что, это, как, все, ее, его, они, мы, вы, мне, тебе, нас, вас, них, 
-    для, над, под, при, про, без, из, от, до, по, за, об, обо, или, зато, 
-    если, ли, бы, же, то, но, а, и, в, во, к, ко, с, со, о, у, я, ты, он, она, они
+    "что", "это", "как", "все", "ее", "его", "они", "мы", "вы", "мне", "тебе", "нас", "вас", "них", 
+    "для", "над", "под", "при", "про", "без", "из", "от", "до", "по", "за", "об", "обо", "или", "зато", 
+    "если", "ли", "бы", "же", "то", "но", "а", "и", "в", "во", "к", "ко", "с", "со", "о", "у", "я", "ты", "он", "она", "они"
 }
 
 def find_smart_reply(user_text: str) -> str:
@@ -34,7 +34,6 @@ def find_smart_reply(user_text: str) -> str:
     if not user_text:
         return random.choice(phrases)
 
-    # Чистим текст, убираем знаки препинания и выделяем только важные слова (исключая стоп-слова и короткие)
     words_raw = user_text.lower().split()
     user_words = {
         w.strip('.,!?;:«»""()-') for w in words_raw 
@@ -48,22 +47,19 @@ def find_smart_reply(user_text: str) -> str:
     max_matches = 0
     matching_phrases = []
 
-    # Ищем фразы с максимальным количеством совпадений именно смысловых слов
     for phrase in phrases:
         phrase_words = set(w.lower().strip('.,!?;:«»""()-') for w in phrase.split())
         matches = len(user_words.intersection(phrase_words))
         
         if matches > max_matches:
             max_matches = matches
-            matching_phrases = [phrase]  найден новый рекорд — сбрасываем список и пишем этот
+            matching_phrases = [phrase]
         elif matches == max_matches and matches > 0:
-            matching_phrases.append(phrase)  добавляем в копилку с таким же количеством совпадений
+            matching_phrases.append(phrase)
 
-    # Если нашли точечные совпадения, выбираем случайно среди самых релевантных
     if matching_phrases and max_matches > 0:
         return random.choice(matching_phrases)
     else:
-        # Если прямых пересечений по смыслу не нашлось, берем случайную мудрость из базы
         return random.choice(phrases)
 
 @bot.message_handler(commands=['start', 'help'])
@@ -83,14 +79,12 @@ def handle_all_messages(message):
     
     is_mentioned = BOT_USERNAME and f"@{BOT_USERNAME}" in user_text.lower()
 
-    # Личка, реплай на бота или упоминание — отвечаем мгновенно и точечно
     if message.chat.type == 'private' or is_reply_to_bot or is_mentioned:
         clean_text = user_text.replace(f"@{BOT_USERNAME}", "").strip() if BOT_USERNAME else user_text
         reply_phrase = find_smart_reply(clean_text)
         bot.reply_to(message, reply_phrase)
         return
 
-    # В группах — считаем до 15 сообщений
     chat_counters[chat_id] = chat_counters.get(chat_id, 0) + 1
 
     if chat_counters[chat_id] >= 15:
@@ -99,5 +93,5 @@ def handle_all_messages(message):
         bot.reply_to(message, reply_phrase)
 
 if __name__ == "__main__":
-    print("Бот Топяский Философ и Мудрец запущен в режиме повышенной точности...")
+    print("Бот Топякский Философ и Мудрец запущен в режиме повышенной точности...")
     bot.infinity_polling(timeout=60, long_polling_timeout=60)
