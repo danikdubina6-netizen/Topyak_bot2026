@@ -64,7 +64,7 @@ def find_smart_reply(user_text: str) -> str:
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-    bot.reply_to(message, "Здаров! Тоб на связи. Настроен на точечный и глубокий подбор мудрости.")
+    bot.reply_to(message, "Здаров! Топяский Философ и Мудрец на связи. Настроен на точечный и глубокий подбор мудрости.")
 
 @bot.message_handler(func=lambda message: True)
 def handle_all_messages(message):
